@@ -176,45 +176,7 @@
 \end{frame}
 
 % ─── Section 4 ───────────────────────────────────────────────────────────────
-\section{Setup Challenges}
 
-\begin{frame}{Installation Challenges}
-  \begin{block}{Challenge 1: Duplicate \texttt{bindIp} in \texttt{mongod.conf}}
-    The Homebrew default config and our LAN IP entry were both present under \texttt{net:}, causing \texttt{mongod} to fail on startup silently.\\
-    \textbf{Fix:} Removed duplicate key, kept only \texttt{bindIp: 127.0.0.1,192.168.88.146}
-  \end{block}
-
-  \vspace{0.2cm}
-  \begin{block}{Challenge 2: Non-Breaking Spaces in Config File}
-    Copying YAML from a chat message introduced Unicode non-breaking spaces (\texttt{0xC2A0}) instead of ASCII spaces. \texttt{mongod} reported \texttt{"Unrecognized option: systemLog"}.\\
-    \textbf{Fix:} Rewritten with \texttt{cat > mongod.conf << 'EOF'} to guarantee ASCII encoding.
-  \end{block}
-
-  \vspace{0.2cm}
-  \begin{block}{Challenge 3: \texttt{sudo brew services} Ownership Issue}
-    Running \texttt{sudo brew services} changed file ownership to root, preventing the service from starting as a user process.\\
-    \textbf{Fix:} \texttt{sudo chown -R \$(whoami)} on affected paths, then restarted without sudo.
-  \end{block}
-\end{frame}
-
-\begin{frame}{Installation Challenges (cont.)}
-  \begin{block}{Challenge 4: Missing Log and Data Directories}
-    \texttt{mongod} failed silently because \texttt{/opt/homebrew/var/log/mongodb/} did not exist yet.\\
-    \textbf{Fix:} \texttt{mkdir -p} for both log and data directories before starting the service.
-  \end{block}
-
-  \vspace{0.3cm}
-  \begin{block}{Challenge 5: macOS AirPlay Receiver on Port 5000}
-    Flask defaulted to port 5000, which is reserved by macOS AirPlay Receiver (ControlCenter process).\\
-    \textbf{Fix:} Moved Flask dashboard to port \texttt{5001}.
-  \end{block}
-
-  \vspace{0.3cm}
-  \begin{block}{Challenge 6: Secondary Not Reachable from Primary}
-    Secondary Mac's \texttt{mongod} was binding only to \texttt{127.0.0.1} and not the LAN IP, making port 27017 unreachable from the primary.\\
-    \textbf{Fix:} Corrected \texttt{bindIp} to include \texttt{192.168.88.105}, recreated missing directories, restarted service.
-  \end{block}
-\end{frame}
 
 % ─── Section 5 ───────────────────────────────────────────────────────────────
 \section{Schema Design}
@@ -289,7 +251,6 @@
           \item \textbf{db.py} --- primary \& secondary connections
           \item \textbf{operations.py} --- insert/update/delete with logging
           \item \textbf{app.py} --- Flask web dashboard (port 5001)
-          \item \textbf{benchmark.py} --- 1000-op stress test
           \item \textbf{test\_replication.py} --- 13 assertions
           \item \textbf{trace.py} --- live change stream watcher
         \end{itemize}
@@ -321,14 +282,14 @@
       \textbf{\texttt{rs.initiate()} command:}
       \begin{itemize}
         \item \texttt{\_id: "rs0"}
-        \item Member 0: \texttt{mongo-primary.lan:27017} (priority 2)
-        \item Member 1: \texttt{mongo-secondary.lan:27017} (priority 1)
+        \item Member 0:\\ \texttt{mongo-primary.lan:27017} {\small(priority 2)}
+        \item Member 1:\\ \texttt{mongo-secondary.lan:27017} {\small(priority 1)}
       \end{itemize}
 
     \column{0.47\textwidth}
       \begin{alertblock}{Verified result}
-        \texttt{mongo-primary.lan:27017} \textcolor{primary}{PRIMARY}\\
-        \texttt{mongo-secondary.lan:27017} \textcolor{secondary}{SECONDARY}
+        \small\texttt{mongo-primary.lan:27017} \textcolor{primary}{\textbf{PRIMARY}}\\[4pt]
+        \small\texttt{mongo-secondary.lan:27017} \textcolor{secondary}{\textbf{SECONDARY}}
       \end{alertblock}
   \end{columns}
 
@@ -366,38 +327,6 @@
   \end{columns}
 \end{frame}
 
-\begin{frame}{Benchmark: 1000 Operations}
-  \begin{columns}
-    \column{0.42\textwidth}
-      \textbf{Operation mix:}
-      \begin{itemize}
-        \item 417 inserts (41.7\%)
-        \item 377 updates (37.7\%)
-        \item 206 deletes (20.6\%)
-      \end{itemize}
-
-      \vspace{0.3cm}
-      \textbf{Replication delay:}
-      \begin{tabular}{lr}
-        \toprule
-        \textbf{Metric} & \textbf{Value} \\
-        \midrule
-        min   & 4.56 ms \\
-        p50   & 7.70 ms \\
-        p95   & 12.78 ms \\
-        p99   & 96.40 ms \\
-        max   & 113.52 ms \\
-        avg   & 10.17 ms \\
-        \bottomrule
-      \end{tabular}
-
-      \vspace{0.2cm}
-      \textcolor{primary}{\textbf{Success rate: 100\%}} (0 timeouts)
-
-    \column{0.55\textwidth}
-      \includegraphics[width=\textwidth]{../control_node/benchmark_run1_single.png}
-  \end{columns}
-\end{frame}
 
 \begin{frame}{Web Dashboard --- Overview}
   \begin{center}
@@ -409,57 +338,39 @@
 \end{frame}
 
 \begin{frame}{Web Dashboard --- Insert Operation}
-  \begin{columns}
-    \column{0.55\textwidth}
-      \includegraphics[width=\textwidth]{insert.png}
-    \column{0.42\textwidth}
-      \textbf{Insert flow:}
-      \begin{enumerate}
-        \item User enters key + JSON value
-        \item Write sent to \textcolor{primary}{PRIMARY} with \texttt{w=majority}
-        \item Control node polls \textcolor{secondary}{SECONDARY} every 10ms
-        \item When \texttt{version=1} appears on secondary: delay recorded
-        \item Log entry written to \texttt{operation\_logs}
-      \end{enumerate}
-      \vspace{0.2cm}
-      Result appears instantly in the table with \texttt{leader\_write\_time} and \texttt{follower\_visible\_time}.
-  \end{columns}
+  \begin{center}
+    \includegraphics[width=0.82\textwidth]{insert.png}
+  \end{center}
+  \vspace{0.1cm}
+  \begin{enumerate}
+    \item Write sent to \textcolor{primary}{PRIMARY} with \texttt{w=majority} \quad
+    \item Secondary polled every 10ms until \texttt{version=1} appears \quad
+    \item \texttt{replication\_delay\_ms} logged with \texttt{leader\_write\_time} and \texttt{follower\_visible\_time}
+  \end{enumerate}
 \end{frame}
 
 \begin{frame}{Web Dashboard --- Update Operation}
-  \begin{columns}
-    \column{0.55\textwidth}
-      \includegraphics[width=\textwidth]{update.png}
-    \column{0.42\textwidth}
-      \textbf{Update flow:}
-      \begin{enumerate}
-        \item Select existing item from dropdown
-        \item New JSON value sent to primary
-        \item \texttt{version} increments (e.g.\ $1 \to 2$)
-        \item Secondary polled until \texttt{version} matches
-        \item \texttt{replication\_delay\_ms} computed and logged
-      \end{enumerate}
-      \vspace{0.2cm}
-      The \textbf{SEC.VER} column in the table shows the secondary's current version --- a mismatch indicates replication in progress.
-  \end{columns}
+  \begin{center}
+    \includegraphics[width=0.82\textwidth]{update.png}
+  \end{center}
+  \vspace{0.1cm}
+  \begin{enumerate}
+    \item New value sent to primary, \texttt{version} increments ($1 \to 2$) \quad
+    \item Secondary polled until \texttt{version} matches \quad
+    \item \textbf{SEC.VER} column shows secondary's version --- mismatch means replication in progress
+  \end{enumerate}
 \end{frame}
 
 \begin{frame}{Web Dashboard --- Delete Operation}
-  \begin{columns}
-    \column{0.55\textwidth}
-      \includegraphics[width=\textwidth]{delete.png}
-    \column{0.42\textwidth}
-      \textbf{Soft Delete flow:}
-      \begin{enumerate}
-        \item Select item to delete
-        \item \texttt{deleted: true} written to primary
-        \item \texttt{version} still increments
-        \item Document remains on secondary --- only flag changes
-        \item Replication delay measured identically
-      \end{enumerate}
-      \vspace{0.2cm}
-      Soft delete is chosen over hard delete to preserve the document on the secondary for replication timing analysis.
-  \end{columns}
+  \begin{center}
+    \includegraphics[width=0.82\textwidth]{delete.png}
+  \end{center}
+  \vspace{0.1cm}
+  \begin{enumerate}
+    \item \texttt{deleted: true} flag written to primary, \texttt{version} still increments \quad
+    \item Document preserved on secondary for replication timing analysis \quad
+    \item Delay measured identically to insert and update
+  \end{enumerate}
 \end{frame}
 
 % ─── Section 8 ───────────────────────────────────────────────────────────────
