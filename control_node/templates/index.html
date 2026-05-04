@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>CENG465 — Replication Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --green: #3fb950;
+      --blue: #58a6ff;
+      --orange: #f0883e;
+      --red: #f85149;
+      --purple: #a371f7;
+      --yellow: #d29922;
+    }
+
+    body { background: var(--bg); color: var(--text); font-family: 'SF Mono', 'Cascadia Code', monospace; font-size: 13px; }
+
+    /* ── Header ── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      gap: 24px;
+    }
+    header h1 { font-size: 15px; font-weight: 700; letter-spacing: .5px; color: var(--text); }
+    .badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 600;
+      border: 1px solid var(--border);
+    }
+    .badge .dot { width: 7px; height: 7px; border-radius: 50%; }
+    .badge.primary { border-color: var(--green); color: var(--green); }
+    .badge.primary .dot { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .badge.secondary { border-color: var(--blue); color: var(--blue); }
+    .badge.secondary .dot { background: var(--blue); box-shadow: 0 0 6px var(--blue); }
+    .stats-bar { margin-left: auto; display: flex; gap: 20px; }
+    .stat { text-align: right; }
+    .stat .val { font-size: 16px; font-weight: 700; color: var(--orange); }
+    .stat .lbl { font-size: 10px; color: var(--muted); }
+
+    /* ── Layout ── */
+    .layout {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      grid-template-rows: auto 1fr;
+      gap: 0;
+      height: calc(100vh - 57px);
+    }
+
+    /* ── Left panel ── */
+    .left-panel {
+      grid-row: 1 / 3;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .panel-title {
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 1px; color: var(--muted); padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    /* Op tabs */
+    .tabs { display: flex; gap: 4px; }
+    .tab {
+      flex: 1; padding: 6px; text-align: center; border-radius: 6px;
+      cursor: pointer; font-size: 11px; font-weight: 600;
+      border: 1px solid var(--border); background: transparent; color: var(--muted);
+      transition: all .15s;
+    }
+    .tab.active.insert { background: rgba(63,185,80,.15); color: var(--green); border-color: var(--green); }
+    .tab.active.update { background: rgba(88,166,255,.15); color: var(--blue); border-color: var(--blue); }
+    .tab.active.delete { background: rgba(248,81,73,.15); color: var(--red); border-color: var(--red); }
+
+    .op-form { display: none; flex-direction: column; gap: 10px; }
+    .op-form.active { display: flex; }
+
+    label { font-size: 11px; color: var(--muted); display: block; margin-bottom: 3px; }
+    input, textarea, select {
+      width: 100%; padding: 7px 10px; border-radius: 6px;
+      background: var(--bg); border: 1px solid var(--border);
+      color: var(--text); font-family: inherit; font-size: 12px;
+      outline: none; transition: border-color .15s;
+    }
+    input:focus, textarea:focus, select:focus { border-color: var(--blue); }
+    textarea { resize: vertical; min-height: 70px; }
+
+    .btn {
+      padding: 8px 14px; border-radius: 6px; border: none;
+      font-family: inherit; font-size: 12px; font-weight: 600;
+      cursor: pointer; transition: opacity .15s;
+    }
+    .btn:hover { opacity: .85; }
+    .btn.insert { background: var(--green); color: #000; }
+    .btn.update { background: var(--blue); color: #000; }
+    .btn.delete { background: var(--red); color: #fff; }
+
+    .result-box {
+      padding: 8px 10px; border-radius: 6px;
+      background: var(--bg); border: 1px solid var(--border);
+      font-size: 11px; color: var(--muted); min-height: 36px;
+      display: none;
+    }
+    .result-box.show { display: block; }
+    .result-box .delay { color: var(--orange); font-weight: 700; }
+    .result-box .err { color: var(--red); }
+
+    /* Stat cards */
+    .stat-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .stat-card {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 12px;
+    }
+    .stat-card .val { font-size: 18px; font-weight: 700; color: var(--orange); }
+    .stat-card .lbl { font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+    /* ── Right top: data table ── */
+    .data-panel {
+      overflow: auto;
+      border-bottom: 1px solid var(--border);
+    }
+
+    table { width: 100%; border-collapse: collapse; }
+    thead th {
+      position: sticky; top: 0; z-index: 1;
+      background: var(--surface);
+      padding: 8px 12px; text-align: left;
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .8px; color: var(--muted);
+      border-bottom: 1px solid var(--border);
+    }
+    thead th:first-child { padding-left: 16px; }
+    tbody tr { border-bottom: 1px solid var(--border); transition: background .1s; }
+    tbody tr:hover { background: rgba(255,255,255,.03); }
+    tbody td { padding: 7px 12px; font-size: 12px; vertical-align: middle; }
+    tbody td:first-child { padding-left: 16px; }
+
+    .op-pill {
+      display: inline-block; padding: 2px 8px; border-radius: 10px;
+      font-size: 10px; font-weight: 700;
+    }
+    .pill-insert { background: rgba(63,185,80,.15); color: var(--green); }
+    .pill-update { background: rgba(88,166,255,.15); color: var(--blue); }
+    .pill-delete { background: rgba(248,81,73,.15); color: var(--red); }
+    .pill-ok { background: rgba(63,185,80,.1); color: var(--green); }
+    .pill-timeout { background: rgba(248,81,73,.1); color: var(--red); }
+
+    .sync-icon { font-size: 14px; }
+    .deleted-row td { opacity: .45; }
+
+    /* Primary vs Secondary header row */
+    .node-header {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 16px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+    .node-badge {
+      font-size: 10px; font-weight: 700; padding: 2px 8px;
+      border-radius: 4px; text-transform: uppercase;
+    }
+    .node-badge.p { background: rgba(63,185,80,.15); color: var(--green); }
+    .node-badge.s { background: rgba(88,166,255,.15); color: var(--blue); }
+
+    /* ── Right bottom: log ── */
+    .log-panel { overflow-y: auto; }
+    .log-panel table thead th { top: 0; }
+
+    /* ── Chart section ── */
+    .chart-section {
+      grid-column: 2;
+      padding: 16px 20px;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+      height: 220px;
+    }
+    .chart-section canvas { max-height: 170px; }
+
+    /* ── Toast ── */
+    #toast {
+      position: fixed; bottom: 24px; right: 24px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 16px;
+      font-size: 12px; color: var(--text);
+      box-shadow: 0 4px 20px rgba(0,0,0,.5);
+      opacity: 0; transform: translateY(10px);
+      transition: all .2s; pointer-events: none; z-index: 99;
+    }
+    #toast.show { opacity: 1; transform: translateY(0); }
+
+    /* scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<header>
+  <h1>CENG465 — Single-Leader Replication Dashboard</h1>
+  <span class="badge primary"><span class="dot"></span>PRIMARY &nbsp;<span id="hdr-primary">mongo-primary.lan</span></span>
+  <span class="badge secondary"><span class="dot"></span>SECONDARY &nbsp;<span id="hdr-secondary">mongo-secondary.lan</span></span>
+  <div class="stats-bar">
+    <div class="stat"><div class="val" id="stat-total">0</div><div class="lbl">Total Ops</div></div>
+    <div class="stat"><div class="val" id="stat-p50" style="color:var(--green)">—</div><div class="lbl">p50 Delay</div></div>
+    <div class="stat"><div class="val" id="stat-p95" style="color:var(--orange)">—</div><div class="lbl">p95 Delay</div></div>
+    <div class="stat"><div class="val" id="stat-timeouts" style="color:var(--red)">0</div><div class="lbl">Timeouts</div></div>
+  </div>
+</header>
+
+<!-- ── Layout ── -->
+<div class="layout">
+
+  <!-- ── Left panel ── -->
+  <aside class="left-panel">
+
+    <div>
+      <div class="panel-title">Operations</div>
+      <div style="height:12px"></div>
+
+      <div class="tabs">
+        <button class="tab active insert" onclick="setTab('insert')">Insert</button>
+        <button class="tab update" onclick="setTab('update')">Update</button>
+        <button class="tab delete" onclick="setTab('delete')">Delete</button>
+      </div>
+      <div style="height:12px"></div>
+
+      <!-- Insert form -->
+      <div class="op-form active" id="form-insert">
+        <div>
+          <label>Key</label>
+          <input id="ins-key" type="text" placeholder="e.g. sensor_1" value="sensor_1">
+        </div>
+        <div>
+          <label>Value (JSON)</label>
+          <textarea id="ins-val">{"temperature": 22.5, "unit": "C"}</textarea>
+        </div>
+        <button class="btn insert" onclick="doInsert()">Insert</button>
+        <div class="result-box" id="res-insert"></div>
+      </div>
+
+      <!-- Update form -->
+      <div class="op-form" id="form-update">
+        <div>
+          <label>Item</label>
+          <select id="upd-id"><option value="">— select item —</option></select>
+        </div>
+        <div>
+          <label>New Value (JSON)</label>
+          <textarea id="upd-val">{"temperature": 25.0, "unit": "C"}</textarea>
+        </div>
+        <button class="btn update" onclick="doUpdate()">Update</button>
+        <div class="result-box" id="res-update"></div>
+      </div>
+
+      <!-- Delete form -->
+      <div class="op-form" id="form-delete">
+        <div>
+          <label>Item</label>
+          <select id="del-id"><option value="">— select item —</option></select>
+        </div>
+        <button class="btn delete" onclick="doDelete()">Soft Delete</button>
+        <div class="result-box" id="res-delete"></div>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div>
+      <div class="panel-title">Replication Stats</div>
+      <div style="height:10px"></div>
+      <div class="stat-cards">
+        <div class="stat-card"><div class="val" id="sc-min">—</div><div class="lbl">min delay</div></div>
+        <div class="stat-card"><div class="val" id="sc-avg">—</div><div class="lbl">avg delay</div></div>
+        <div class="stat-card"><div class="val" id="sc-p95">—</div><div class="lbl">p95 delay</div></div>
+        <div class="stat-card"><div class="val" id="sc-max">—</div><div class="lbl">max delay</div></div>
+      </div>
+    </div>
+
+    <!-- Op breakdown -->
+    <div>
+      <div class="panel-title">By Operation Type</div>
+      <div style="height:10px"></div>
+      <div id="op-breakdown" style="display:flex;flex-direction:column;gap:6px;font-size:12px;"></div>
+    </div>
+
+  </aside>
+
+  <!-- ── Data panel ── -->
+  <div class="data-panel">
+    <div class="node-header">
+      <span class="node-badge p">Primary</span>
+      <span style="color:var(--muted);font-size:11px;">↔</span>
+      <span class="node-badge s">Secondary</span>
+      <span style="color:var(--muted);font-size:11px;margin-left:auto;">Items (latest 50)</span>
+      <button onclick="refreshAll()" style="background:var(--bg);border:1px solid var(--border);color:var(--muted);padding:3px 10px;border-radius:5px;cursor:pointer;font-size:11px;">↻ Refresh</button>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Key</th>
+          <th>Value</th>
+          <th>ver</th>
+          <th>term</th>
+          <th>log#</th>
+          <th>op_id</th>
+          <th>deleted</th>
+          <th>last_updated</th>
+          <th style="color:var(--blue)">sec.ver</th>
+          <th>sync</th>
+        </tr>
+      </thead>
+      <tbody id="items-tbody"></tbody>
+    </table>
+  </div>
+
+  <!-- ── Log panel ── -->
+  <div class="log-panel">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Type</th>
+          <th>Status</th>
+          <th>ver</th>
+          <th>Delay (ms)</th>
+          <th>Leader wrote</th>
+          <th>Follower saw</th>
+        </tr>
+      </thead>
+      <tbody id="logs-tbody"></tbody>
+    </table>
+  </div>
+
+  <!-- ── Chart ── -->
+  <div class="chart-section">
+    <canvas id="delay-chart"></canvas>
+  </div>
+
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ── State ─────────────────────────────────────────────────
+let items = [];
+let logs  = [];
+let chart;
+
+// ── Chart setup ───────────────────────────────────────────
+function initChart() {
+  const ctx = document.getElementById('delay-chart').getContext('2d');
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: { labels: [], datasets: [
+      { label: 'insert', data: [], borderColor: '#3fb950', backgroundColor: 'rgba(63,185,80,.1)', pointRadius: 3, tension: 0.3 },
+      { label: 'update', data: [], borderColor: '#58a6ff', backgroundColor: 'rgba(88,166,255,.1)', pointRadius: 3, tension: 0.3 },
+      { label: 'delete', data: [], borderColor: '#f85149', backgroundColor: 'rgba(248,81,73,.1)', pointRadius: 3, tension: 0.3 },
+    ]},
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: {
+        legend: { labels: { color: '#8b949e', font: { size: 11 } } },
+        tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.raw?.toFixed(2)} ms` } }
+      },
+      scales: {
+        x: { ticks: { color: '#8b949e', font: { size: 10 }, maxTicksLimit: 20 }, grid: { color: 'rgba(255,255,255,.05)' } },
+        y: { ticks: { color: '#8b949e', font: { size: 10 }, callback: v => v + ' ms' }, grid: { color: 'rgba(255,255,255,.05)' }, min: 0 }
+      }
+    }
+  });
+}
+
+function updateChart(logData) {
+  const ops = [...logData].reverse();
+  const labels = ops.map(l => `#${l.log_index}`);
+  chart.data.labels = labels;
+  const byType = { insert: [], update: [], delete: [] };
+  ops.forEach(l => {
+    Object.keys(byType).forEach(op => {
+      byType[op].push(l.operation_type === op ? (l.replication_delay_ms ?? null) : null);
+    });
+  });
+  chart.data.datasets[0].data = byType.insert;
+  chart.data.datasets[1].data = byType.update;
+  chart.data.datasets[2].data = byType.delete;
+  chart.update();
+}
+
+// ── Percentile helper ──────────────────────────────────────
+function percentile(arr, p) {
+  if (!arr.length) return null;
+  const s = [...arr].sort((a, b) => a - b);
+  const idx = Math.ceil((p / 100) * s.length) - 1;
+  return s[Math.max(0, idx)];
+}
+
+// ── Render items table ─────────────────────────────────────
+function renderItems(data) {
+  const tbody = document.getElementById('items-tbody');
+  tbody.innerHTML = '';
+
+  // Refresh selects
+  const updSel = document.getElementById('upd-id');
+  const delSel = document.getElementById('del-id');
+  const prevUpd = updSel.value, prevDel = delSel.value;
+  updSel.innerHTML = '<option value="">— select item —</option>';
+  delSel.innerHTML = '<option value="">— select item —</option>';
+
+  data.forEach(item => {
+    const tr = document.createElement('tr');
+    if (item.deleted) tr.classList.add('deleted-row');
+    const syncIcon = item.synced ? '<span class="sync-icon" title="synced">✓</span>'
+                                 : '<span class="sync-icon" style="color:var(--red)" title="lag">⚡</span>';
+    const secVer = item.secondary_version !== null ? item.secondary_version : '<span style="color:var(--red)">—</span>';
+    const val = JSON.stringify(item.value).slice(0, 40);
+    const ts = item.last_updated ? item.last_updated.replace('T',' ').slice(0,19) : '—';
+    tr.innerHTML = `
+      <td style="color:var(--orange)">${escHtml(item.key)}</td>
+      <td style="color:var(--muted)">${escHtml(val)}</td>
+      <td style="color:var(--purple);font-weight:700">${item.version}</td>
+      <td style="color:var(--muted)">${item.leader_term ?? '—'}</td>
+      <td style="color:var(--muted)">${item.log_index ?? '—'}</td>
+      <td style="color:var(--muted);font-size:10px">${item.operation_id}…</td>
+      <td>${item.deleted ? '<span style="color:var(--red)">true</span>' : '<span style="color:var(--muted)">false</span>'}</td>
+      <td style="color:var(--muted);font-size:11px">${ts}</td>
+      <td style="color:var(--blue);font-weight:700">${secVer}</td>
+      <td>${syncIcon}</td>`;
+    tbody.appendChild(tr);
+
+    if (!item.deleted) {
+      const opt1 = new Option(`${item.key} (v${item.version}) — ${item.id.slice(-6)}`, item.id);
+      const opt2 = new Option(`${item.key} (v${item.version}) — ${item.id.slice(-6)}`, item.id);
+      updSel.appendChild(opt1);
+      delSel.appendChild(opt2);
+    }
+  });
+
+  if (prevUpd) updSel.value = prevUpd;
+  if (prevDel) delSel.value = prevDel;
+}
+
+// ── Render logs table ──────────────────────────────────────
+function renderLogs(data) {
+  const tbody = document.getElementById('logs-tbody');
+  tbody.innerHTML = '';
+  data.forEach(log => {
+    const tr = document.createElement('tr');
+    const delay = log.replication_delay_ms !== null
+      ? `<span style="color:var(--orange);font-weight:700">${log.replication_delay_ms?.toFixed(2)}</span>`
+      : '<span style="color:var(--red)">timeout</span>';
+    const lw = log.leader_write_time ? log.leader_write_time.replace('T',' ').slice(11,23) : '—';
+    const fw = log.follower_visible_time ? log.follower_visible_time.replace('T',' ').slice(11,23) : '<span style="color:var(--red)">—</span>';
+    const ver = `${log.version_before ?? '—'} → ${log.version_after ?? '—'}`;
+    tr.innerHTML = `
+      <td style="color:var(--muted)">${log.log_index}</td>
+      <td><span class="op-pill pill-${log.operation_type}">${log.operation_type}</span></td>
+      <td><span class="op-pill pill-${log.status}">${log.status}</span></td>
+      <td style="color:var(--purple)">${ver}</td>
+      <td>${delay}</td>
+      <td style="color:var(--muted);font-size:11px">${lw}</td>
+      <td style="color:var(--muted);font-size:11px">${fw}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+// ── Stats ──────────────────────────────────────────────────
+function updateStats(logData) {
+  const delays = logData.filter(l => l.replication_delay_ms !== null).map(l => l.replication_delay_ms);
+  const timeouts = logData.filter(l => l.status === 'timeout').length;
+
+  document.getElementById('stat-total').textContent = logData.length;
+  document.getElementById('stat-timeouts').textContent = timeouts;
+  const p50 = percentile(delays, 50);
+  const p95 = percentile(delays, 95);
+  document.getElementById('stat-p50').textContent = p50 ? p50.toFixed(1)+' ms' : '—';
+  document.getElementById('stat-p95').textContent = p95 ? p95.toFixed(1)+' ms' : '—';
+
+  // Stat cards
+  const min_ = delays.length ? Math.min(...delays) : null;
+  const avg_ = delays.length ? delays.reduce((a,b)=>a+b,0)/delays.length : null;
+  const max_ = delays.length ? Math.max(...delays) : null;
+  document.getElementById('sc-min').textContent = min_ ? min_.toFixed(1)+' ms' : '—';
+  document.getElementById('sc-avg').textContent = avg_ ? avg_.toFixed(1)+' ms' : '—';
+  document.getElementById('sc-p95').textContent = p95 ? p95.toFixed(1)+' ms' : '—';
+  document.getElementById('sc-max').textContent = max_ ? max_.toFixed(1)+' ms' : '—';
+
+  // By op type
+  const types = ['insert','update','delete'];
+  const breakdown = document.getElementById('op-breakdown');
+  breakdown.innerHTML = '';
+  types.forEach(op => {
+    const d = logData.filter(l => l.operation_type === op && l.replication_delay_ms !== null).map(l => l.replication_delay_ms);
+    const count = logData.filter(l => l.operation_type === op).length;
+    if (!count) return;
+    const avg = d.length ? (d.reduce((a,b)=>a+b,0)/d.length).toFixed(1) : '—';
+    const colors = {insert:'var(--green)',update:'var(--blue)',delete:'var(--red)'};
+    breakdown.innerHTML += `
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span class="op-pill pill-${op}" style="min-width:52px;text-align:center">${op}</span>
+        <span style="color:var(--muted)">${count} ops</span>
+        <span style="color:${colors[op]};font-weight:700">${avg} ms avg</span>
+      </div>`;
+  });
+}
+
+// ── API calls ──────────────────────────────────────────────
+async function refreshItems() {
+  const res = await fetch('/api/items');
+  items = await res.json();
+  renderItems(items);
+}
+
+async function refreshLogs() {
+  const res = await fetch('/api/logs');
+  logs = await res.json();
+  renderLogs(logs);
+  updateStats(logs);
+  updateChart(logs);
+}
+
+function refreshAll() { refreshItems(); refreshLogs(); }
+
+// ── Operations ─────────────────────────────────────────────
+async function apiFetch(url, body) {
+  const controller = new AbortController();
+  const tid = setTimeout(() => controller.abort(), 12000);
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    clearTimeout(tid);
+    return await res.json();
+  } catch(e) {
+    clearTimeout(tid);
+    return {ok: false, error: e.name === 'AbortError' ? 'Request timed out (>12s)' : e.message};
+  }
+}
+
+async function doInsert() {
+  const key = document.getElementById('ins-key').value.trim() || 'item';
+  let value;
+  try { value = JSON.parse(document.getElementById('ins-val').value); }
+  catch { showResult('insert', '<span class="err">Invalid JSON</span>'); return; }
+
+  showResult('insert', '<span style="color:var(--muted)">Inserting…</span>');
+  const data = await apiFetch('/api/insert', {key, value});
+  if (data.ok) {
+    showResult('insert', `<span class="delay">✓ ${data.delay_ms?.toFixed(2) ?? 'timeout'} ms</span> &nbsp;<span style="color:var(--muted)">id: …${data.item_id.slice(-8)}</span>`);
+    toast(`Insert: ${data.delay_ms?.toFixed(2) ?? 'timeout'} ms`);
+    refreshAll();
+  } else {
+    showResult('insert', `<span class="err">✗ ${data.error}</span>`);
+  }
+}
+
+async function doUpdate() {
+  const item_id = document.getElementById('upd-id').value;
+  if (!item_id) { showResult('update', '<span class="err">Select an item</span>'); return; }
+  let value;
+  try { value = JSON.parse(document.getElementById('upd-val').value); }
+  catch { showResult('update', '<span class="err">Invalid JSON</span>'); return; }
+
+  showResult('update', '<span style="color:var(--muted)">Updating…</span>');
+  const data = await apiFetch('/api/update', {item_id, value});
+  if (data.ok) {
+    showResult('update', `<span class="delay">✓ ${data.delay_ms?.toFixed(2) ?? 'timeout'} ms</span>`);
+    toast(`Update: ${data.delay_ms?.toFixed(2) ?? 'timeout'} ms`);
+    refreshAll();
+  } else {
+    showResult('update', `<span class="err">✗ ${data.error}</span>`);
+  }
+}
+
+async function doDelete() {
+  const item_id = document.getElementById('del-id').value;
+  if (!item_id) { showResult('delete', '<span class="err">Select an item</span>'); return; }
+
+  showResult('delete', '<span style="color:var(--muted)">Deleting…</span>');
+  const data = await apiFetch('/api/delete', {item_id});
+  if (data.ok) {
+    showResult('delete', `<span class="delay">✓ ${data.delay_ms?.toFixed(2) ?? 'timeout'} ms</span>`);
+    toast(`Delete: ${data.delay_ms?.toFixed(2) ?? 'timeout'} ms`);
+    refreshAll();
+  } else {
+    showResult('delete', `<span class="err">✗ ${data.error}</span>`);
+  }
+}
+
+// ── UI helpers ─────────────────────────────────────────────
+function setTab(op) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.op-form').forEach(f => f.classList.remove('active'));
+  document.querySelector(`.tab.${op}`).classList.add('active');
+  document.getElementById(`form-${op}`).classList.add('active');
+}
+
+function showResult(op, html) {
+  const el = document.getElementById(`res-${op}`);
+  el.innerHTML = html;
+  el.classList.add('show');
+}
+
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Init ───────────────────────────────────────────────────
+initChart();
+refreshAll();
+setInterval(refreshAll, 4000);
+</script>
+</body>
+</html>

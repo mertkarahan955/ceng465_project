@@ -16,6 +16,7 @@ help:
 	@echo "  make trace                 Live trace from PRIMARY  (separate terminal)"
 	@echo "  make trace-secondary       Live trace from SECONDARY (other machine)"
 	@echo ""
+	@echo "  make dashboard             Start web dashboard at http://localhost:5001"
 	@echo "  make benchmark             Single-machine benchmark (OPS=1000)"
 	@echo "  make benchmark-writer      Two-machine writer side  (RUN_ID=run1 OPS=1000)"
 	@echo "  make benchmark-reader      Two-machine reader side  (RUN_ID=run1) — other machine"
@@ -27,7 +28,7 @@ help:
 
 install:
 	python3 -m venv venv
-	venv/bin/pip install --quiet pymongo rich matplotlib
+	venv/bin/pip install --quiet -r requirements.txt
 	@echo "Dependencies installed."
 
 demo: install
@@ -52,6 +53,9 @@ from visualize import save_chart; \
 import db; \
 logs = list(db.get_primary()['operation_logs'].find().sort('log_index', 1)); \
 print('Chart saved:', save_chart(logs)) if logs else print('No logs found.')"
+
+dashboard: install
+	$(PYTHON) app.py
 
 benchmark: install
 	$(PYTHON) benchmark.py --mode single --ops $(OPS)

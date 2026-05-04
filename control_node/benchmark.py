@@ -352,80 +352,93 @@ def run_writer(ops: int, run_id: str):
 # Two-machine: reader
 # ---------------------------------------------------------------------------
 
+def _process_manifest_doc(doc, sdb, pdb, results, processed, progress, task):
+    from bson import ObjectId
+    if not doc or doc.get("run_id") != doc.get("run_id"):
+        return
+    seq = doc["seq"]
+    if seq in processed:
+        return
+    processed.add(seq)
+
+    item_id_str = doc.get("item_id")
+    if not item_id_str:
+        return
+
+    item_id = ObjectId(item_id_str)
+    expected_version = doc["expected_version"]
+    writer_write_time = doc["writer_write_time"]
+    if writer_write_time.tzinfo is None:
+        writer_write_time = writer_write_time.replace(tzinfo=timezone.utc)
+
+    replication_delay_ms, secondary_read_ms = poll_secondary(sdb, item_id, expected_version)
+    visible_time = utcnow()
+
+    cross_machine_delay_ms = None
+    if replication_delay_ms is not None:
+        cross_machine_delay_ms = (visible_time - writer_write_time).total_seconds() * 1000
+
+    record = {
+        "run_id": doc["run_id"],
+        "seq": seq,
+        "op_type": doc["op_type"],
+        "item_id": item_id_str,
+        "write_latency_ms": doc.get("write_latency_ms"),
+        "replication_delay_ms": round(replication_delay_ms, 3) if replication_delay_ms else None,
+        "cross_machine_delay_ms": round(cross_machine_delay_ms, 3) if cross_machine_delay_ms else None,
+        "secondary_read_latency_ms": round(secondary_read_ms, 3) if secondary_read_ms else None,
+        "reader_machine_id": MACHINE_ID,
+        "status": "ok" if replication_delay_ms else "timeout",
+        "mode": "reader",
+    }
+    results.append(record)
+    pdb["benchmark_results"].insert_one(dict(record))
+    progress.advance(task)
+
+
 def run_reader(run_id: str):
+    from bson import ObjectId
     sdb = secondary_db()
-    # also need primary to watch the manifest
     pdb = primary_db()
 
     console.print(Panel.fit(
         f"[bold white]CENG465 Benchmark — Reader Mode[/bold white]\n"
         f"[dim]run_id={run_id}  machine={MACHINE_ID}[/dim]\n"
-        "[dim]Watching benchmark_manifest for ops from writer...[/dim]",
+        "[dim]Processing existing manifest entries + watching for new ones...[/dim]",
         border_style="blue"
     ))
 
     results = []
     processed = set()
 
+    # Count total expected ops from manifest
+    total_expected = pdb["benchmark_manifest"].count_documents({"run_id": run_id})
+    console.print(f"[dim]Found {total_expected} existing manifest entries for run_id={run_id}[/dim]\n")
+
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
-        BarColumn(), MofNCompleteColumn(), TaskProgressColumn(),
+        BarColumn(), MofNCompleteColumn(), TaskProgressColumn(), TimeRemainingColumn(),
         console=console,
     ) as progress:
-        task = progress.add_task("Reading from SECONDARY...", total=None)
+        task = progress.add_task("Reading from SECONDARY...", total=total_expected or None)
 
-        with pdb["benchmark_manifest"].watch(
-            [{"$match": {"fullDocument.run_id": run_id, "operationType": "insert"}}],
-            full_document="updateLookup",
-        ) as stream:
-            for event in stream:
-                doc = event.get("fullDocument")
-                if not doc or doc["seq"] in processed:
-                    continue
-                processed.add(doc["seq"])
+        # First: process all already-written manifest entries
+        for doc in pdb["benchmark_manifest"].find({"run_id": run_id}).sort("seq", 1):
+            _process_manifest_doc(doc, sdb, pdb, results, processed, progress, task)
 
-                item_id_str = doc.get("item_id")
-                if not item_id_str:
-                    continue
-
-                from bson import ObjectId
-                item_id = ObjectId(item_id_str)
-                expected_version = doc["expected_version"]
-                writer_write_time = doc["writer_write_time"]
-
-                replication_delay_ms, secondary_read_ms = poll_secondary(sdb, item_id, expected_version)
-                visible_time = utcnow()
-
-                cross_machine_delay_ms = None
-                if replication_delay_ms is not None and writer_write_time:
-                    cross_machine_delay_ms = (
-                        (visible_time - writer_write_time.replace(tzinfo=timezone.utc)
-                         if writer_write_time.tzinfo is None
-                         else visible_time - writer_write_time).total_seconds() * 1000
-                    )
-
-                record = {
-                    "run_id": run_id,
-                    "seq": doc["seq"],
-                    "op_type": doc["op_type"],
-                    "item_id": item_id_str,
-                    "write_latency_ms": doc.get("write_latency_ms"),
-                    "replication_delay_ms": round(replication_delay_ms, 3) if replication_delay_ms else None,
-                    "cross_machine_delay_ms": round(cross_machine_delay_ms, 3) if cross_machine_delay_ms else None,
-                    "secondary_read_latency_ms": round(secondary_read_ms, 3) if secondary_read_ms else None,
-                    "reader_machine_id": MACHINE_ID,
-                    "status": "ok" if replication_delay_ms else "timeout",
-                    "mode": "reader",
-                }
-                results.append(record)
-                pdb["benchmark_results"].insert_one(dict(record))
-                progress.advance(task)
-
-                # stop when we've seen all writer ops (heuristic: gap in seqs)
-                # Reader will be Ctrl+C'd manually or after timeout
-                if len(processed) % 100 == 0:
-                    console.print(f"  [dim]{len(processed)} ops processed[/dim]")
+        # Then: watch for any new entries (in case writer is still running)
+        if len(processed) < total_expected or total_expected == 0:
+            with pdb["benchmark_manifest"].watch(
+                [{"$match": {"fullDocument.run_id": run_id, "operationType": "insert"}}],
+                full_document="updateLookup",
+            ) as stream:
+                for event in stream:
+                    doc = event.get("fullDocument")
+                    if doc:
+                        _process_manifest_doc(doc, sdb, pdb, results, processed, progress, task)
+                    if total_expected and len(processed) >= total_expected:
+                        break
 
     print_stats(results)
     generate_charts(results, run_id, mode="reader")
