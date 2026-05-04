@@ -1,0 +1,25 @@
+\frametitle{Schema: \texttt {operation\_logs} Collection}
+Every write produces one log entry. This collection is the primary source of evidence for replication behavior.
+
+  \vspace{0.2cm}
+  \begin{lstlisting}[language=Python]
+{
+  "operation_id":          UUID string,
+  "leader_term":           int,
+  "log_index":             int,                  # global ordering
+  "operation_type":        "insert" | "update" | "delete",
+  "target_id":             ObjectId,
+  "leader_write_time":     ISODate,              # write confirmed on primary
+  "follower_visible_time": ISODate | null,       # secondary returned correct version
+  "replication_delay_ms":  float | null,         # follower_visible - leader_write
+  "version_before":        int | null,
+  "version_after":         int,
+  "status":                "visible_on_follower" | "timeout"
+}
+  \end{lstlisting}
+
+  \vspace{0.1cm}
+  \begin{alertblock}{Key Insight}
+    \texttt{replication\_delay\_ms = follower\_visible\_time - leader\_write\_time}\\
+    This is measured by polling the secondary every 10ms until \texttt{version == version\_after}.
+  \end{alertblock}
