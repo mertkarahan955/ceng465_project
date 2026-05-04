@@ -3,6 +3,7 @@ import time
 import threading
 from numbers import Integral
 from datetime import datetime, timezone
+from bson import ObjectId
 from pymongo import WriteConcern
 from pymongo.errors import PyMongoError
 
@@ -61,6 +62,14 @@ def _now():
     return datetime.now(timezone.utc)
 
 
+def _as_aware_utc(dt):
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 def _wc():
     return WriteConcern(w=_write_concern, wtimeout=config.WRITE_TIMEOUT_MS)
 
@@ -69,25 +78,53 @@ def _is_async_write():
     return _write_concern == 1
 
 
-def _secondary_has_version(target_id, version_after):
+def _coerce_target_id(target_id):
+    if isinstance(target_id, ObjectId):
+        return target_id
+    if isinstance(target_id, str):
+        try:
+            return ObjectId(target_id)
+        except Exception:
+            return target_id
+    if isinstance(target_id, dict) and "$oid" in target_id:
+        try:
+            return ObjectId(target_id["$oid"])
+        except Exception:
+            return target_id
+    return target_id
+
+
+def _secondary_has_state(target_id, version_after, log_index=None, operation_id=None):
     secondary = db.get_secondary()
     doc = secondary["items"].find_one(
-        {"_id": target_id},
-        {"version": 1},
+        {"_id": _coerce_target_id(target_id)},
+        {"version": 1, "last_log_index": 1},
     )
+    if not doc and operation_id:
+        doc = secondary["items"].find_one(
+            {"last_operation_id": operation_id},
+            {"version": 1, "last_log_index": 1},
+        )
     if not doc:
         return False
+
     version = doc.get("version")
-    if not isinstance(version, Integral) or not isinstance(version_after, Integral):
-        return False
-    return int(version) >= int(version_after)
+    if isinstance(version, Integral) and isinstance(version_after, Integral):
+        if int(version) >= int(version_after):
+            return True
+
+    secondary_log_index = doc.get("last_log_index")
+    if isinstance(secondary_log_index, Integral) and isinstance(log_index, Integral):
+        return int(secondary_log_index) >= int(log_index)
+
+    return False
 
 
 def _poll_secondary(target_id, version_after, operation_id):
     deadline = time.time() + config.POLL_TIMEOUT_MS / 1000
     while time.time() < deadline:
         try:
-            if _secondary_has_version(target_id, version_after):
+            if _secondary_has_state(target_id, version_after):
                 return datetime.now(timezone.utc)
         except PyMongoError:
             return None
@@ -101,6 +138,7 @@ def _write_log(entry: dict):
 
 def _mark_log_visible(log_id, leader_write_time):
     follower_visible_time = _now()
+    leader_write_time = _as_aware_utc(leader_write_time)
     delay_ms = (follower_visible_time - leader_write_time).total_seconds() * 1000
     db.get_primary()["operation_logs"].update_one(
         {"_id": log_id},
@@ -111,6 +149,48 @@ def _mark_log_visible(log_id, leader_write_time):
         }},
     )
     return delay_ms
+
+
+def mark_pending_logs_visible_for_item(target_id, secondary_version, secondary_log_index=None):
+    """Close pending logs for an item once the item table proves it is synced."""
+    if not isinstance(secondary_version, Integral):
+        return 0
+
+    primary = db.get_primary()
+    filters = [
+        {"target_id": target_id},
+        {"target_id": str(target_id)},
+        {"target_id": _coerce_target_id(target_id)},
+    ]
+
+    updated = 0
+    seen = set()
+    for target_filter in filters:
+        query = {
+            **target_filter,
+            "status": {"$in": list(_pending_statuses)},
+            "follower_visible_time": None,
+        }
+        for log in primary["operation_logs"].find(query):
+            log_id = log["_id"]
+            if log_id in seen:
+                continue
+            seen.add(log_id)
+
+            version_after = log.get("version_after")
+            log_index = log.get("log_index")
+            version_matches = isinstance(version_after, Integral) and int(secondary_version) >= int(version_after)
+            log_matches = (
+                isinstance(secondary_log_index, Integral)
+                and isinstance(log_index, Integral)
+                and int(secondary_log_index) >= int(log_index)
+            )
+
+            if version_matches or log_matches:
+                _mark_log_visible(log_id, log["leader_write_time"])
+                updated += 1
+
+    return updated
 
 
 def _mark_log_timeout(log_id):
@@ -190,11 +270,13 @@ def reconcile_pending_once(limit=None):
     for log in logs:
         target_id = log.get("target_id")
         version_after = log.get("version_after")
+        log_index = log.get("log_index")
+        operation_id = log.get("operation_id")
         leader_write_time = log.get("leader_write_time")
         if not target_id or not isinstance(version_after, Integral) or not leader_write_time:
             continue
         try:
-            if _secondary_has_version(target_id, version_after):
+            if _secondary_has_state(target_id, version_after, log_index, operation_id):
                 _mark_log_visible(log["_id"], leader_write_time)
                 updated += 1
         except PyMongoError:
@@ -222,10 +304,27 @@ def drain_pending_logs(max_batches=None):
         updated = reconcile_pending_once(limit=config.RECONCILE_BATCH_SIZE)
         total_updated += updated
 
-        if updated == 0:
+        if updated == 0 and pending_log_count() >= pending_before:
             break
 
     return total_updated
+
+
+def sweep_synced_items_from_secondary():
+    """Use the item table as ground truth to close stale pending logs."""
+    updated = 0
+    secondary = db.get_secondary()
+    cursor = secondary["items"].find(
+        {},
+        {"_id": 1, "version": 1, "last_log_index": 1},
+    )
+    for doc in cursor:
+        updated += mark_pending_logs_visible_for_item(
+            doc["_id"],
+            doc.get("version"),
+            doc.get("last_log_index"),
+        )
+    return updated
 
 
 def _set_secondary_health(reachable, checked_at, error=None, reconciled=0):
@@ -272,6 +371,7 @@ def _healthcheck_once():
         db.get_secondary().command("ping")
         _set_secondary_health(True, checked_at, reconciled=reconciled)
         reconciled = drain_pending_logs()
+        reconciled += sweep_synced_items_from_secondary()
         _set_secondary_health(True, _now(), reconciled=reconciled)
     except PyMongoError as exc:
         _set_secondary_health(False, checked_at, error=exc)

@@ -84,6 +84,16 @@ def api_items():
     for doc in primary_docs:
         oid = str(doc["_id"])
         sec = sec_map.get(oid)
+        synced = sec.get("version") == doc.get("version") if sec else False
+        if synced:
+            try:
+                operations.mark_pending_logs_visible_for_item(
+                    doc["_id"],
+                    sec.get("version"),
+                    sec.get("last_log_index"),
+                )
+            except Exception:
+                pass
         result.append({
             "id": oid,
             "key": doc.get("key", ""),
@@ -95,7 +105,7 @@ def api_items():
             "log_index": doc.get("last_log_index"),
             "leader_term": doc.get("leader_term"),
             "secondary_version": sec.get("version") if sec else None,
-            "synced": sec.get("version") == doc.get("version") if sec else False,
+            "synced": synced,
             "secondary_reachable": secondary_reachable,
         })
     return jsonify(result)
@@ -106,6 +116,7 @@ def api_logs():
     reconcile_error = None
     try:
         operations.drain_pending_logs()
+        operations.sweep_synced_items_from_secondary()
     except Exception as e:
         reconcile_error = str(e)
 
