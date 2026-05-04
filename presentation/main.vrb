@@ -1,7 +1,7 @@
 \frametitle{Schema Design}
 \begin{columns}
     \column{0.48\textwidth}
-      \textbf{\texttt{items} collection}
+      \small\textbf{\texttt{items} collection}
       \begin{lstlisting}[language={}]
 {
   key,
@@ -14,25 +14,24 @@
   deleted           -- soft delete
 }
       \end{lstlisting}
-
     \column{0.48\textwidth}
-      \textbf{\texttt{operation\_logs} collection}
+      \small\textbf{\texttt{operation\_logs} collection}
       \begin{lstlisting}[language={}]
 {
-  operation_id,
-  operation_type,
+  operation_type,   -- insert / update / delete
   log_index,
   leader_write_time,
   follower_visible_time,
   replication_delay_ms,
   version_before,
   version_after,
-  status,           -- pending / visible / timeout
-  write_concern
+  status,           -- pending_follower
+                    -- visible_on_follower
+                    -- timeout
+  write_concern     -- majority / 1
 }
       \end{lstlisting}
   \end{columns}
-
   \begin{block}{Raft-inspired metadata}
-    \texttt{leader\_term}, \texttt{log\_index}, \texttt{operation\_id}, and \texttt{version} make update ordering and follower visibility fully observable.
+    \small\texttt{leader\_term}, \texttt{log\_index}, \texttt{version}, and \texttt{operation\_id} make write ordering and follower visibility fully observable.
   \end{block}
