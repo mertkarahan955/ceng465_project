@@ -84,14 +84,14 @@ def do_insert(pdb, key: str, value: dict, term: int, log_idx: int, op_id: str) -
         "deleted": False,
     }
     t0 = now_ms()
-    result = pdb["items"].with_options(WriteConcern(w="majority")).insert_one(doc)
+    result = pdb["items"].with_options(write_concern=WriteConcern(w="majority")).insert_one(doc)
     write_ms = now_ms() - t0
     return result.inserted_id, write_ms
 
 
 def do_update(pdb, item_id, new_value: dict, version_after: int, term: int, log_idx: int, op_id: str) -> float:
     t0 = now_ms()
-    pdb["items"].with_options(WriteConcern(w="majority")).update_one(
+    pdb["items"].with_options(write_concern=WriteConcern(w="majority")).update_one(
         {"_id": item_id},
         {"$set": {
             "value": new_value, "version": version_after,
@@ -104,7 +104,7 @@ def do_update(pdb, item_id, new_value: dict, version_after: int, term: int, log_
 
 def do_delete(pdb, item_id, version_after: int, term: int, log_idx: int, op_id: str) -> float:
     t0 = now_ms()
-    pdb["items"].with_options(WriteConcern(w="majority")).update_one(
+    pdb["items"].with_options(write_concern=WriteConcern(w="majority")).update_one(
         {"_id": item_id},
         {"$set": {
             "deleted": True, "version": version_after,
@@ -597,7 +597,7 @@ def generate_charts(results: list[dict], run_id: str, mode: str):
     if by_op_data:
         bp = ax4.boxplot(
             list(by_op_data.values()),
-            labels=list(by_op_data.keys()),
+            tick_labels=list(by_op_data.keys()),
             patch_artist=True,
             medianprops={"color": "white", "linewidth": 2},
         )
@@ -642,7 +642,7 @@ def generate_charts(results: list[dict], run_id: str, mode: str):
         data_box.append(cross_vals)
         colors_box.append("#FF5722")
     if data_box:
-        bp2 = ax6.boxplot(data_box, labels=labels_box, patch_artist=True,
+        bp2 = ax6.boxplot(data_box, tick_labels=labels_box, patch_artist=True,
                           medianprops={"color": "white", "linewidth": 2})
         for patch, color in zip(bp2["boxes"], colors_box):
             patch.set_facecolor(color)
