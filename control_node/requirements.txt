@@ -1,0 +1,4 @@
+matplotlib==3.10.9
+numpy==2.4.4
+pymongo==4.17.0
+rich==15.0.0
