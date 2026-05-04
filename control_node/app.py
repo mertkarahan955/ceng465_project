@@ -103,7 +103,12 @@ def api_items():
 
 @app.route("/api/logs")
 def api_logs():
-    operations.drain_pending_logs()
+    reconcile_error = None
+    try:
+        operations.drain_pending_logs()
+    except Exception as e:
+        reconcile_error = str(e)
+
     pdb = db.get_primary()
     logs = list(pdb["operation_logs"].find().sort("log_index", -1).limit(200))
     result = []
@@ -119,6 +124,7 @@ def api_logs():
             "leader_write_time": log.get("leader_write_time").isoformat() if log.get("leader_write_time") else "",
             "follower_visible_time": log.get("follower_visible_time").isoformat() if log.get("follower_visible_time") else None,
             "write_concern": str(log.get("write_concern", "")),
+            "reconcile_error": reconcile_error,
         })
     return jsonify(result)
 

@@ -494,6 +494,17 @@ function renderItems(data) {
 function renderLogs(data) {
   const tbody = document.getElementById('logs-tbody');
   tbody.innerHTML = '';
+
+  if (!Array.isArray(data)) {
+    renderLogMessage('Log endpoint returned an unexpected response', 'var(--red)');
+    return;
+  }
+
+  if (!data.length) {
+    renderLogMessage('No operation logs found', 'var(--muted)');
+    return;
+  }
+
   data.forEach(log => {
     const tr = document.createElement('tr');
     const delay = log.replication_delay_ms !== null
@@ -514,6 +525,14 @@ function renderLogs(data) {
       <td style="color:var(--muted);font-size:11px">${fw}</td>`;
     tbody.appendChild(tr);
   });
+}
+
+function renderLogMessage(message, color) {
+  const tbody = document.getElementById('logs-tbody');
+  tbody.innerHTML = `
+    <tr>
+      <td colspan="7" style="padding:16px;color:${color};font-size:12px">${escHtml(message)}</td>
+    </tr>`;
 }
 
 // ── Stats ──────────────────────────────────────────────────
@@ -634,11 +653,21 @@ async function refreshItems() {
 }
 
 async function refreshLogs() {
-  const res = await fetch('/api/logs');
-  logs = await res.json();
-  renderLogs(logs);
-  updateStats(logs);
-  updateChart(logs);
+  try {
+    const res = await fetch('/api/logs');
+    const data = await res.json();
+    if (!res.ok || !Array.isArray(data)) {
+      const msg = data?.error || `Log request failed (${res.status})`;
+      renderLogMessage(msg, 'var(--red)');
+      return;
+    }
+    logs = data;
+    renderLogs(logs);
+    updateStats(logs);
+    updateChart(logs);
+  } catch(e) {
+    renderLogMessage(e.message, 'var(--red)');
+  }
 }
 
 function refreshAll() { refreshStatus(); refreshItems(); refreshLogs(); }
