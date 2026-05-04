@@ -9,6 +9,7 @@ from bson import ObjectId
 from flask import Flask, jsonify, render_template, request
 
 import db
+import operations
 from operations import insert_item, update_item, delete_item
 
 app = Flask(__name__)
@@ -80,6 +81,16 @@ def api_logs():
             "follower_visible_time": log.get("follower_visible_time").isoformat() if log.get("follower_visible_time") else None,
         })
     return jsonify(result)
+
+
+@app.route("/api/write-concern", methods=["GET", "POST"])
+def api_write_concern():
+    if request.method == "POST":
+        w = request.json.get("w", "majority")
+        if w not in ("majority", "1", 1):
+            return jsonify({"ok": False, "error": "w must be 'majority' or '1'"}), 400
+        operations.set_write_concern(str(w))
+    return jsonify({"ok": True, "write_concern": operations.get_write_concern()})
 
 
 @app.route("/api/insert", methods=["POST"])

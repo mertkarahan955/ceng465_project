@@ -8,6 +8,16 @@ import config
 
 _leader_term = 1
 _log_index = 0
+_write_concern = "majority"   # toggled via dashboard
+
+
+def set_write_concern(w: str):
+    global _write_concern
+    _write_concern = w
+
+
+def get_write_concern() -> str:
+    return _write_concern
 
 
 def _next_op():
@@ -18,6 +28,10 @@ def _next_op():
 
 def _now():
     return datetime.now(timezone.utc)
+
+
+def _wc():
+    return WriteConcern(w=_write_concern)
 
 
 def _poll_secondary(target_id, version_after, operation_id):
@@ -52,11 +66,9 @@ def insert_item(key: str, value: dict, client_id: str = "control_node"):
         "created_by": client_id,
     }
 
-    result = primary["items"].with_options(
-        write_concern=WriteConcern(w="majority")
-    ).insert_one(doc)
-
+    result = primary["items"].with_options(write_concern=_wc()).insert_one(doc)
     target_id = result.inserted_id
+
     follower_visible_time = _poll_secondary(target_id, 1, operation_id)
     delay_ms = None
     if follower_visible_time:
@@ -75,6 +87,7 @@ def insert_item(key: str, value: dict, client_id: str = "control_node"):
         "version_before": None,
         "version_after": 1,
         "client_id": client_id,
+        "write_concern": _write_concern,
         "status": "visible_on_follower" if follower_visible_time else "timeout",
     })
 
@@ -93,9 +106,7 @@ def update_item(target_id, new_value: dict, client_id: str = "control_node"):
     version_after = version_before + 1
     leader_write_time = _now()
 
-    primary["items"].with_options(
-        write_concern=WriteConcern(w="majority")
-    ).update_one(
+    primary["items"].with_options(write_concern=_wc()).update_one(
         {"_id": target_id},
         {"$set": {
             "value": new_value,
@@ -125,6 +136,7 @@ def update_item(target_id, new_value: dict, client_id: str = "control_node"):
         "version_before": version_before,
         "version_after": version_after,
         "client_id": client_id,
+        "write_concern": _write_concern,
         "status": "visible_on_follower" if follower_visible_time else "timeout",
     })
 
@@ -143,9 +155,7 @@ def delete_item(target_id, client_id: str = "control_node"):
     version_after = version_before + 1
     leader_write_time = _now()
 
-    primary["items"].with_options(
-        write_concern=WriteConcern(w="majority")
-    ).update_one(
+    primary["items"].with_options(write_concern=_wc()).update_one(
         {"_id": target_id},
         {"$set": {
             "deleted": True,
@@ -175,6 +185,7 @@ def delete_item(target_id, client_id: str = "control_node"):
         "version_before": version_before,
         "version_after": version_after,
         "client_id": client_id,
+        "write_concern": _write_concern,
         "status": "visible_on_follower" if follower_visible_time else "timeout",
     })
 

@@ -280,6 +280,26 @@
       </div>
     </div>
 
+    <!-- Write Concern Toggle -->
+    <div>
+      <div class="panel-title">Write Concern</div>
+      <div style="height:10px"></div>
+      <div style="display:flex;gap:6px;margin-bottom:10px">
+        <button id="wc-majority" class="btn" onclick="setWriteConcern('majority')"
+          style="flex:1;background:rgba(63,185,80,.15);color:var(--green);border:1px solid var(--green)">
+          w=majority
+        </button>
+        <button id="wc-1" class="btn" onclick="setWriteConcern('1')"
+          style="flex:1;background:var(--bg);color:var(--muted);border:1px solid var(--border)">
+          w=1
+        </button>
+      </div>
+      <div id="wc-info" style="font-size:11px;color:var(--muted);line-height:1.5;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px">
+        <strong style="color:var(--green)">w=majority</strong>: write blocks until secondary ACKs — appears synchronous.<br>
+        Switch to <strong style="color:var(--orange)">w=1</strong> to make writes fire-and-forget (true async).
+      </div>
+    </div>
+
     <!-- Stats -->
     <div>
       <div class="panel-title">Replication Stats</div>
@@ -630,8 +650,45 @@ function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
+// ── Write Concern ──────────────────────────────────────────
+async function setWriteConcern(w) {
+  const res = await fetch('/api/write-concern', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({w}),
+  });
+  const data = await res.json();
+  if (data.ok) applyWriteConcernUI(data.write_concern);
+}
+
+function applyWriteConcernUI(wc) {
+  const isAsync = wc === '1';
+  const btnMaj = document.getElementById('wc-majority');
+  const btn1   = document.getElementById('wc-1');
+  const info   = document.getElementById('wc-info');
+
+  btnMaj.style.background = isAsync ? 'var(--bg)' : 'rgba(63,185,80,.15)';
+  btnMaj.style.color      = isAsync ? 'var(--muted)' : 'var(--green)';
+  btnMaj.style.borderColor = isAsync ? 'var(--border)' : 'var(--green)';
+
+  btn1.style.background  = isAsync ? 'rgba(240,136,62,.15)' : 'var(--bg)';
+  btn1.style.color       = isAsync ? 'var(--orange)' : 'var(--muted)';
+  btn1.style.borderColor = isAsync ? 'var(--orange)' : 'var(--border)';
+
+  info.innerHTML = isAsync
+    ? '<strong style="color:var(--orange)">w=1 (async)</strong>: primary returns immediately without waiting for secondary. Disconnect secondary\'s network and insert — data appears on primary but not on secondary. Reconnect to watch catch-up.'
+    : '<strong style="color:var(--green)">w=majority</strong>: write blocks until secondary ACKs — appears synchronous.<br>Switch to <strong style="color:var(--orange)">w=1</strong> to make writes fire-and-forget (true async).';
+}
+
+async function initWriteConcern() {
+  const res = await fetch('/api/write-concern');
+  const data = await res.json();
+  if (data.ok) applyWriteConcernUI(data.write_concern);
+}
+
 // ── Init ───────────────────────────────────────────────────
 initChart();
+initWriteConcern();
 refreshAll();
 setInterval(refreshAll, 4000);
 </script>
