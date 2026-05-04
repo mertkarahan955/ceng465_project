@@ -92,7 +92,7 @@ The dashboard supports two write concern modes:
 
 | Mode | Behavior |
 |------|----------|
-| `w=majority` | The write waits for replica-set acknowledgement. The dashboard then polls the secondary and records `visible_on_follower` or `timeout`. |
+| `w=majority` | The control node requires the secondary to be reachable before writing. If the secondary is down, the write is rejected before mutating the primary. |
 | `w=1` | The write is acknowledged by the leader only. The request returns immediately after the primary write and operation log insert. The log status starts as `pending_follower`. |
 
 For `w=1`, the dashboard starts a background reconciler. If the secondary is offline, writes still complete on the primary and appear in `operation_logs` as `pending_follower`. When the secondary comes back and catches up from MongoDB's oplog, the reconciler scans pending logs, detects that the expected version is visible on the secondary, fills:

@@ -50,16 +50,16 @@
 
     /* ── Layout ── */
     .layout {
-      display: grid;
-      grid-template-columns: 280px 1fr;
-      grid-template-rows: auto 1fr;
-      gap: 0;
+      display: flex;
+      flex-direction: row;
       height: calc(100vh - 57px);
+      overflow: hidden;
     }
 
     /* ── Left panel ── */
     .left-panel {
-      grid-row: 1 / 3;
+      width: 280px;
+      flex-shrink: 0;
       background: var(--surface);
       border-right: 1px solid var(--border);
       overflow-y: auto;
@@ -67,6 +67,15 @@
       display: flex;
       flex-direction: column;
       gap: 16px;
+    }
+
+    /* ── Right column ── */
+    .right-col {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-width: 0;
     }
 
     .panel-title {
@@ -131,8 +140,10 @@
 
     /* ── Right top: data table ── */
     .data-panel {
-      overflow: auto;
-      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-height: 60px;
     }
 
     table { width: 100%; border-collapse: collapse; }
@@ -180,18 +191,53 @@
     .node-badge.s { background: rgba(88,166,255,.15); color: var(--blue); }
 
     /* ── Right bottom: log ── */
-    .log-panel { overflow-y: auto; }
+    .log-panel { display: flex; flex-direction: column; overflow: hidden; min-height: 60px; }
     .log-panel table thead th { top: 0; }
+
+    /* ── Panel headers ── */
+    .panel-header {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 16px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .panel-header .ph-title {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .8px; color: var(--muted);
+    }
+    .collapse-btn {
+      margin-left: auto; background: none; border: none;
+      color: var(--muted); font-size: 14px; cursor: pointer;
+      padding: 0 4px; line-height: 1;
+    }
+    .collapse-btn:hover { color: var(--text); }
+    .panel-body { flex: 1; overflow: auto; }
+
+    /* ── Drag resize handle ── */
+    .resize-handle {
+      height: 5px; flex-shrink: 0;
+      background: var(--border);
+      cursor: row-resize;
+      display: flex; align-items: center; justify-content: center;
+      transition: background .15s;
+    }
+    .resize-handle:hover, .resize-handle.dragging { background: var(--blue); }
+    .resize-handle::after {
+      content: ''; display: block;
+      width: 32px; height: 2px;
+      background: rgba(255,255,255,.25);
+      border-radius: 1px;
+    }
 
     /* ── Chart section ── */
     .chart-section {
-      grid-column: 2;
-      padding: 16px 20px;
-      border-top: 1px solid var(--border);
+      border-top: none;
       background: var(--surface);
-      height: 220px;
+      display: flex; flex-direction: column;
+      min-height: 40px;
     }
-    .chart-section canvas { max-height: 170px; }
+    .chart-section canvas { flex: 1; min-height: 0; padding: 0 4px 8px; }
 
     /* ── Toast ── */
     #toast {
@@ -336,15 +382,19 @@
 
   </aside>
 
+  <!-- ── Right column ── -->
+  <div class="right-col">
+
   <!-- ── Data panel ── -->
-  <div class="data-panel">
-    <div class="node-header">
+  <div class="data-panel" id="panel-items" style="flex:2">
+    <div class="node-header panel-header">
       <span class="node-badge p">Primary</span>
       <span style="color:var(--muted);font-size:11px;">↔</span>
       <span class="node-badge s">Secondary</span>
-      <span style="color:var(--muted);font-size:11px;margin-left:auto;">Items (latest 50)</span>
-      <button onclick="refreshAll()" style="background:var(--bg);border:1px solid var(--border);color:var(--muted);padding:3px 10px;border-radius:5px;cursor:pointer;font-size:11px;">↻ Refresh</button>
+      <span class="ph-title" style="margin-left:8px;">Items (latest 50)</span>
+      <button onclick="refreshAll()" style="background:var(--bg);border:1px solid var(--border);color:var(--muted);padding:3px 10px;border-radius:5px;cursor:pointer;font-size:11px;margin-left:auto;">↻ Refresh</button>
     </div>
+    <div class="panel-body" id="body-items">
     <table>
       <thead>
         <tr>
@@ -362,10 +412,17 @@
       </thead>
       <tbody id="items-tbody"></tbody>
     </table>
+    </div>
   </div>
 
+  <div class="resize-handle" id="rh-1"></div>
+
   <!-- ── Log panel ── -->
-  <div class="log-panel">
+  <div class="log-panel" id="panel-logs" style="flex:2">
+    <div class="panel-header">
+      <span class="ph-title">Operation Logs</span>
+    </div>
+    <div class="panel-body" id="body-logs">
     <table>
       <thead>
         <tr>
@@ -380,13 +437,20 @@
       </thead>
       <tbody id="logs-tbody"></tbody>
     </table>
+    </div>
   </div>
 
+  <div class="resize-handle" id="rh-2"></div>
+
   <!-- ── Chart ── -->
-  <div class="chart-section">
+  <div class="chart-section" id="panel-chart" style="flex:1">
+    <div class="panel-header" style="padding:5px 16px;">
+      <span class="ph-title">Replication Delay Chart</span>
+    </div>
     <canvas id="delay-chart"></canvas>
   </div>
 
+  </div><!-- /right-col -->
 </div>
 
 <div id="toast"></div>
@@ -824,8 +888,55 @@ async function initWriteConcern() {
   if (data.ok) applyWriteConcernUI(data.write_concern);
 }
 
+// ── Drag resize ────────────────────────────────────────────
+function initResizers() {
+  makeResizer('rh-1', 'panel-items', 'panel-logs');
+  makeResizer('rh-2', 'panel-logs',  'panel-chart');
+}
+
+function makeResizer(handleId, topId, bottomId) {
+  const handle = document.getElementById(handleId);
+  const top    = document.getElementById(topId);
+  const bottom = document.getElementById(bottomId);
+
+  handle.addEventListener('mousedown', e => {
+    e.preventDefault();
+    const startY   = e.clientY;
+    const startTopH    = top.getBoundingClientRect().height;
+    const startBottomH = bottom.getBoundingClientRect().height;
+
+    handle.classList.add('dragging');
+    document.body.style.cursor    = 'row-resize';
+    document.body.style.userSelect = 'none';
+
+    function onMove(e) {
+      const dy = e.clientY - startY;
+      const newTop    = Math.max(60, startTopH + dy);
+      const newBottom = Math.max(60, startBottomH - dy);
+      top.style.flex    = 'none';
+      top.style.height  = newTop + 'px';
+      bottom.style.flex   = 'none';
+      bottom.style.height = newBottom + 'px';
+      if (bottomId === 'panel-chart') chart.resize();
+    }
+
+    function onUp() {
+      handle.classList.remove('dragging');
+      document.body.style.cursor    = '';
+      document.body.style.userSelect = '';
+      chart.resize();
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup',   onUp);
+    }
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup',   onUp);
+  });
+}
+
 // ── Init ───────────────────────────────────────────────────
 initChart();
+initResizers();
 initWriteConcern();
 refreshAll();
 setInterval(refreshAll, 4000);

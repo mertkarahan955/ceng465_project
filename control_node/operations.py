@@ -71,11 +71,23 @@ def _as_aware_utc(dt):
 
 
 def _wc():
+    if _is_async_write():
+        return WriteConcern(w=_write_concern)
     return WriteConcern(w=_write_concern, wtimeout=config.WRITE_TIMEOUT_MS)
 
 
 def _is_async_write():
     return _write_concern == 1
+
+
+def _require_secondary_for_majority():
+    if _is_async_write():
+        return
+    try:
+        db.get_secondary().command("ping")
+    except PyMongoError as exc:
+        _set_secondary_health(False, _now(), error=exc)
+        raise RuntimeError("w=majority requires the secondary to be reachable; write rejected before primary mutation")
 
 
 def _coerce_target_id(target_id):
@@ -422,6 +434,7 @@ def start_reconciler():
 
 def insert_item(key: str, value: dict, client_id: str = "control_node"):
     primary = db.get_primary()
+    _require_secondary_for_majority()
     operation_id, log_index = _next_op()
     leader_write_time = _now()
 
@@ -454,6 +467,7 @@ def insert_item(key: str, value: dict, client_id: str = "control_node"):
 
 def update_item(target_id, new_value: dict, client_id: str = "control_node"):
     primary = db.get_primary()
+    _require_secondary_for_majority()
     operation_id, log_index = _next_op()
 
     current = primary["items"].find_one({"_id": target_id})
@@ -490,6 +504,7 @@ def update_item(target_id, new_value: dict, client_id: str = "control_node"):
 
 def delete_item(target_id, client_id: str = "control_node"):
     primary = db.get_primary()
+    _require_secondary_for_majority()
     operation_id, log_index = _next_op()
 
     current = primary["items"].find_one({"_id": target_id})

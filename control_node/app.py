@@ -71,6 +71,17 @@ def api_status():
 def api_items():
     pdb = db.get_primary()
     primary_docs = list(pdb["items"].find().sort("last_updated", -1).limit(50))
+    op_ids = [d.get("last_operation_id") for d in primary_docs if d.get("last_operation_id")]
+    log_indexes = [d.get("last_log_index") for d in primary_docs if d.get("last_log_index") is not None]
+    logs_by_op = {}
+    logs_by_index = {}
+    if op_ids:
+        for log in pdb["operation_logs"].find({"operation_id": {"$in": op_ids}}):
+            logs_by_op[log.get("operation_id")] = log
+    if log_indexes:
+        for log in pdb["operation_logs"].find({"log_index": {"$in": log_indexes}}):
+            logs_by_index[(log.get("log_index"), str(log.get("target_id")))] = log
+
     try:
         sdb = db.get_secondary()
         sec_map = {str(d["_id"]): d for d in sdb["items"].find()}
@@ -84,7 +95,17 @@ def api_items():
     for doc in primary_docs:
         oid = str(doc["_id"])
         sec = sec_map.get(oid)
+        log = logs_by_op.get(doc.get("last_operation_id")) or logs_by_index.get((doc.get("last_log_index"), oid))
+        secondary_version = sec.get("version") if sec else None
         synced = sec.get("version") == doc.get("version") if sec else False
+
+        if not secondary_reachable and log and log.get("status") == "visible_on_follower":
+            # Secondary is currently down, so we cannot live-read it. Preserve
+            # the last proven sync state from operation_logs; only newer
+            # pending writes should appear unsynced while the replica is down.
+            synced = True
+            secondary_version = log.get("version_after", doc.get("version"))
+
         if synced:
             try:
                 operations.mark_pending_logs_visible_for_item(
@@ -104,7 +125,7 @@ def api_items():
             "operation_id": doc.get("last_operation_id", "")[:8],
             "log_index": doc.get("last_log_index"),
             "leader_term": doc.get("leader_term"),
-            "secondary_version": sec.get("version") if sec else None,
+            "secondary_version": secondary_version,
             "synced": synced,
             "secondary_reachable": secondary_reachable,
         })

@@ -1,25 +1,38 @@
-\frametitle{Schema: \texttt {operation\_logs} Collection}
-Every write produces one log entry. This collection is the primary source of evidence for replication behavior.
-
-  \vspace{0.2cm}
-  \begin{lstlisting}[language=Python]
+\frametitle{Schema Design}
+\begin{columns}
+    \column{0.48\textwidth}
+      \textbf{\texttt{items} collection}
+      \begin{lstlisting}[language={}]
 {
-  "operation_id":          UUID string,
-  "leader_term":           int,
-  "log_index":             int,                  # global ordering
-  "operation_type":        "insert" | "update" | "delete",
-  "target_id":             ObjectId,
-  "leader_write_time":     ISODate,              # write confirmed on primary
-  "follower_visible_time": ISODate | null,       # secondary returned correct version
-  "replication_delay_ms":  float | null,         # follower_visible - leader_write
-  "version_before":        int | null,
-  "version_after":         int,
-  "status":                "visible_on_follower" | "timeout"
+  key,
+  value,
+  version,          -- increments on each write
+  leader_term,
+  last_log_index,
+  last_operation_id,
+  last_updated,
+  deleted           -- soft delete
 }
-  \end{lstlisting}
+      \end{lstlisting}
 
-  \vspace{0.1cm}
-  \begin{alertblock}{Key Insight}
-    \texttt{replication\_delay\_ms = follower\_visible\_time - leader\_write\_time}\\
-    This is measured by polling the secondary every 10ms until \texttt{version == version\_after}.
-  \end{alertblock}
+    \column{0.48\textwidth}
+      \textbf{\texttt{operation\_logs} collection}
+      \begin{lstlisting}[language={}]
+{
+  operation_id,
+  operation_type,
+  log_index,
+  leader_write_time,
+  follower_visible_time,
+  replication_delay_ms,
+  version_before,
+  version_after,
+  status,           -- pending / visible / timeout
+  write_concern
+}
+      \end{lstlisting}
+  \end{columns}
+
+  \begin{block}{Raft-inspired metadata}
+    \texttt{leader\_term}, \texttt{log\_index}, \texttt{operation\_id}, and \texttt{version} make update ordering and follower visibility fully observable.
+  \end{block}

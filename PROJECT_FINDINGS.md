@@ -41,6 +41,7 @@ MongoDB is a good fit because MongoDB Replica Sets naturally provide:
 - Self-Managed Replication Reference: https://www.mongodb.com/docs/manual/reference/replication/
 - Local setup guide in this repo: `MONGODB_MACOS_REPLICA_SET_SETUP.md`
 - Current setup progress in this repo: `SETUP_PROGRESS.md`
+- Current session handoff in this repo: `SESSION_HANDOFF.md`
 
 Important points from the official documentation:
 

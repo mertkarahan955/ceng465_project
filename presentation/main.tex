@@ -1,44 +1,33 @@
 \documentclass[aspectratio=169]{beamer}
 
 \usetheme{Madrid}
-\usecolortheme{default}
 \setbeamertemplate{navigation symbols}{}
 \setbeamertemplate{footline}[frame number]
 
+\usepackage[utf8]{inputenc}
 \usepackage{graphicx}
 \usepackage{listings}
 \usepackage{xcolor}
 \usepackage{booktabs}
 \usepackage{tikz}
 \usetikzlibrary{positioning}
-\usepackage{fontawesome5}
 
-% Colors
 \definecolor{mongogreen}{RGB}{0,104,74}
 \definecolor{primary}{RGB}{0,140,80}
 \definecolor{secondary}{RGB}{30,100,200}
+\definecolor{orange}{RGB}{220,110,20}
+\definecolor{danger}{RGB}{190,40,40}
 \definecolor{codebg}{RGB}{245,245,245}
-\definecolor{orange}{RGB}{200,90,0}
 
-\setbeamercolor{normal text}{fg=black, bg=white}
-\setbeamercolor{background canvas}{bg=white}
 \setbeamercolor{frametitle}{bg=mongogreen, fg=white}
-\setbeamercolor{title}{fg=white}
 \setbeamercolor{structure}{fg=mongogreen}
 \setbeamercolor{block title}{bg=mongogreen, fg=white}
 \setbeamercolor{block body}{bg=gray!10, fg=black}
 \setbeamercolor{alerted text}{fg=orange}
-\setbeamercolor{itemize item}{fg=mongogreen}
-\setbeamercolor{enumerate item}{fg=mongogreen}
-\setbeamercolor{section in toc}{fg=black}
 \setbeamercolor{footline}{fg=black, bg=gray!15}
-\setbeamercolor{palette primary}{bg=mongogreen, fg=white}
-\setbeamercolor{palette secondary}{bg=mongogreen!80, fg=white}
-\setbeamercolor{palette tertiary}{bg=mongogreen!60, fg=white}
 
-% Code style
 \lstset{
-  basicstyle=\ttfamily\tiny\color{black},
+  basicstyle=\ttfamily\tiny,
   backgroundcolor=\color{codebg},
   keywordstyle=\color{primary},
   stringstyle=\color{orange},
@@ -46,369 +35,247 @@
   frame=single,
   rulecolor=\color{gray!40},
   breaklines=true,
-  showstringspaces=false,
+  showstringspaces=false
 }
 
-% Title
-\title[CENG465 Progress Presentation]{\textbf{Data Replication in a Single-Leader Environment}}
-\subtitle{CENG465 --- Principles of Data-Intensive Systems \\ Progress Presentation}
-\author{Mert Karahan \and Doğukan Topçu}
+\title[CENG465]{Data Replication in a Single-Leader Environment}
+\subtitle{MongoDB Replica Set + Python Control Node}
+\author{Mert Karahan \and Do\u{g}ukan Top\c{c}u}
+\institute{CENG465 --- Principles of Data-Intensive Systems}
 \date{May 5, 2026}
-\institute{CENG465}
 
-% ─────────────────────────────────────────────────────────────────────────────
 \begin{document}
 
 \begin{frame}
   \titlepage
 \end{frame}
 
-% ─── Outline ─────────────────────────────────────────────────────────────────
-\begin{frame}{Outline}
-  \tableofcontents
-\end{frame}
-
-% ─── Section 1 ───────────────────────────────────────────────────────────────
-\section{Motivation \& Scope}
-
-\begin{frame}{What Is This Project About?}
+% ── Slide 2: Project Overview ─────────────────────────────────────────────────
+\begin{frame}{Project Overview}
   \begin{columns}
-    \column{0.55\textwidth}
-      \textbf{Goal:} Build and observe a \alert{single-leader replication} system across two physical machines.
+    \column{0.54\textwidth}
+      \textbf{Goal:} demonstrate single-leader replication on a truly distributed setup --- two physical macOS machines, no containers.
 
-      \vspace{0.4cm}
-      \textbf{Required behavior:}
+      \vspace{0.35cm}
+      \textbf{What we built}
       \begin{itemize}
-        \item One node acts as \textcolor{primary}{Leader (Primary)} --- receives all writes
-        \item One node acts as \textcolor{secondary}{Follower (Secondary)} --- replicates from leader
-        \item Measure \alert{when} and \alert{how quickly} writes propagate
-        \item Log every operation with ordering metadata
+        \item MongoDB replica set on two machines (LAN)
+        \item Replication-aware data schema
+        \item Operation logging (insert / update / delete)
+        \item Write concern toggle: \texttt{w=majority} vs \texttt{w=1}
+        \item Dashboard: health, delay, and sync state
       \end{itemize}
 
-      \vspace{0.4cm}
-      \textbf{Deployment:} Two separate macOS machines on the same LAN --- satisfies the project's \emph{truly distributed} requirement.
-
     \column{0.42\textwidth}
-      \begin{block}{Project Scope (Progress)}
-        \begin{enumerate}
-          \item \textbf{Environment Setup}\\
-                Replica set on two machines
-          \item \textbf{Schema Design}\\
-                Replication-aware data model
-          \item \textbf{Replication Logging}\\
-                Operation logs with timestamps
-          \item \textbf{Insert / Update / Delete}\\
-                Visibility and delay tracking
-        \end{enumerate}
+      \begin{block}{Central Question}
+        What happens when the follower is unavailable?
+        \begin{itemize}
+          \item Should a write \textbf{block}?
+          \item Should it be \textbf{queued} on the leader?
+          \item How do we \textbf{prove} catch-up?
+        \end{itemize}
       \end{block}
   \end{columns}
 \end{frame}
 
-% ─── Section 2 ───────────────────────────────────────────────────────────────
-\section{Why MongoDB?}
-
-\begin{frame}{Database Choice: MongoDB Replica Set}
-  \begin{columns}
-    \column{0.5\textwidth}
-      \textbf{Key requirements from the project:}
-      \begin{itemize}
-        \item Single-leader replication
-        \item Observable update propagation
-        \item Support for insert, update, delete
-        \item Replication lag must be measurable
-      \end{itemize}
-
-      \vspace{0.3cm}
-      \textbf{MongoDB Replica Set provides all of this natively:}
-      \begin{itemize}
-        \item \textcolor{primary}{Primary} node accepts writes
-        \item \textcolor{secondary}{Secondary} applies operations from the \textbf{oplog}
-        \item Replication is \alert{asynchronous} --- lag is observable
-        \item \texttt{rs.status()} exposes health and lag in real time
-      \end{itemize}
-
-    \column{0.47\textwidth}
-      \begin{alertblock}{Raft-Inspired Metadata}
-        Rather than implementing full Raft, we embed Raft-style tracking fields directly in our documents:
-        \begin{itemize}
-          \item \texttt{leader\_term}
-          \item \texttt{log\_index}
-          \item \texttt{operation\_id}
-          \item \texttt{version}
-        \end{itemize}
-        This allows analysis of \textbf{update ordering} and \textbf{visibility} without replacing MongoDB's built-in replication.
-      \end{alertblock}
-  \end{columns}
-\end{frame}
-
-% ─── Section 3 ───────────────────────────────────────────────────────────────
-\section{Architecture}
-
-\begin{frame}{System Architecture}
+% ── Slide 3: Deployment Architecture ─────────────────────────────────────────
+\begin{frame}{Deployment Architecture}
   \begin{center}
   \begin{tikzpicture}[
-    node distance=2.2cm,
-    box/.style={draw, rounded corners, minimum width=2.8cm, minimum height=1.1cm, align=center, font=\small},
+    node distance=2.4cm,
+    box/.style={draw, rounded corners, minimum width=3.1cm, minimum height=1.1cm, align=center, font=\small},
     arrow/.style={->, thick}
   ]
-    % Nodes
-    \node[box, fill=mongogreen!80, text=white] (primary) {\textbf{PRIMARY}\\\small mongo-primary.lan\\192.168.88.146};
-    \node[box, fill=secondary!60, text=white, right=3.5cm of primary] (secondary) {\textbf{SECONDARY}\\\small mongo-secondary.lan\\192.168.88.105};
-    \node[box, fill=orange!70, text=white, below=1.6cm of primary] (control) {\textbf{Control Node}\\\small Python Driver\\port 5001 (dashboard)};
+    \node[box, fill=mongogreen!85, text=white] (primary) {\textbf{PRIMARY}\\mongo-primary.lan\\192.168.88.146};
+    \node[box, fill=secondary!70, text=white, right=3.8cm of primary] (sec) {\textbf{SECONDARY}\\mongo-secondary.lan\\192.168.88.105};
+    \node[box, fill=orange!75, text=white, below=1.7cm of primary] (control) {\textbf{Control Node}\\Python + Flask\\port 5001};
 
-    % Arrows
-    \draw[arrow, color=primary] (primary) -- node[above, font=\tiny]{\texttt{oplog} replication} (secondary);
-    \draw[arrow, color=orange, dashed] (control) -- node[left, font=\tiny]{w=majority writes} (primary);
-    \draw[arrow, color=secondary, dashed] (control.east) to[bend right=30] node[right, font=\tiny]{read \& poll} (secondary.south);
-
-    % Labels
-    \node[font=\tiny, below=0.05cm of primary] {};
+    \draw[arrow, color=mongogreen] (primary) -- node[above, font=\tiny]{MongoDB oplog replication} (sec);
+    \draw[arrow, color=orange] (control) -- node[left, font=\tiny]{writes} (primary);
+    \draw[arrow, color=secondary, dashed] (control.east) to[bend right=30] node[right, font=\tiny]{direct health / read} (sec.south);
   \end{tikzpicture}
   \end{center}
 
-  \vspace{0.2cm}
-  \begin{columns}
-    \column{0.5\textwidth}
-      \textbf{Replica set name:} \texttt{rs0} \quad \textbf{Port:} \texttt{27017}
-    \column{0.5\textwidth}
-      \textbf{Write concern:} \texttt{w="majority"} --- primary confirms before returning
-  \end{columns}
-\end{frame}
-
-% ─── Section 4 ───────────────────────────────────────────────────────────────
-
-
-% ─── Section 5 ───────────────────────────────────────────────────────────────
-\section{Schema Design}
-
-\begin{frame}[fragile]{Schema: \texttt{items} Collection}
-  Stores application data with replication-aware tracking fields.
-
-  \vspace{0.2cm}
-  \begin{lstlisting}[language=Python]
-{
-  "_id":              ObjectId,
-  "key":              string,          # human-readable identifier
-  "value":            object,          # application payload
-  "version":          int,             # increments on every write
-  "leader_term":      int,             # Raft-inspired term number
-  "last_log_index":   int,             # global operation order
-  "last_operation_id": UUID string,    # unique per write
-  "last_updated":     ISODate,         # timestamp of last write on leader
-  "deleted":          bool,            # soft-delete flag
-  "created_by":       string           # client identifier
-}
-  \end{lstlisting}
-
-  \vspace{0.1cm}
-  \begin{columns}
-    \column{0.5\textwidth}
-      \textbf{Why \texttt{version}?}\\
-      Allows the control node to poll the secondary and detect \emph{exactly} when a specific write becomes visible --- without relying on timestamps alone.
-
-    \column{0.5\textwidth}
-      \textbf{Why soft delete?}\\
-      Preserves the document on secondary for replication analysis. Hard deletes would remove the evidence of propagation timing.
-  \end{columns}
-\end{frame}
-
-\begin{frame}[fragile]{Schema: \texttt{operation\_logs} Collection}
-  Every write produces one log entry. This collection is the primary source of evidence for replication behavior.
-
-  \vspace{0.2cm}
-  \begin{lstlisting}[language=Python]
-{
-  "operation_id":          UUID string,
-  "leader_term":           int,
-  "log_index":             int,                  # global ordering
-  "operation_type":        "insert" | "update" | "delete",
-  "target_id":             ObjectId,
-  "leader_write_time":     ISODate,              # write confirmed on primary
-  "follower_visible_time": ISODate | null,       # secondary returned correct version
-  "replication_delay_ms":  float | null,         # follower_visible - leader_write
-  "version_before":        int | null,
-  "version_after":         int,
-  "status":                "visible_on_follower" | "timeout"
-}
-  \end{lstlisting}
-
-  \vspace{0.1cm}
-  \begin{alertblock}{Key Insight}
-    \texttt{replication\_delay\_ms = follower\_visible\_time - leader\_write\_time}\\
-    This is measured by polling the secondary every 10ms until \texttt{version == version\_after}.
-  \end{alertblock}
-\end{frame}
-
-% ─── Section 6 ───────────────────────────────────────────────────────────────
-\section{Implementation}
-
-\begin{frame}{Implementation Overview}
-  \begin{columns}
-    \column{0.5\textwidth}
-      \begin{block}{Control Node (Python)}
-        \begin{itemize}
-          \item \textbf{config.py} --- hosts, ports, timeouts
-          \item \textbf{db.py} --- primary \& secondary connections
-          \item \textbf{operations.py} --- insert/update/delete with logging
-          \item \textbf{app.py} --- Flask web dashboard (port 5001)
-          \item \textbf{test\_replication.py} --- 13 assertions
-          \item \textbf{trace.py} --- live change stream watcher
-        \end{itemize}
-      \end{block}
-
-    \column{0.47\textwidth}
-      \begin{block}{Write Flow (every operation)}
-        \begin{enumerate}
-          \item Write to primary with \texttt{w="majority"}
-          \item Record \texttt{leader\_write\_time}
-          \item Poll secondary every 10ms
-          \item When \texttt{version} matches: record \texttt{follower\_visible\_time}
-          \item Compute \texttt{replication\_delay\_ms}
-          \item Insert into \texttt{operation\_logs}
-        \end{enumerate}
-      \end{block}
-
-      \vspace{0.2cm}
-      \textbf{Timeout:} 5000ms --- if secondary does not show the update within 5 seconds, the log entry status is set to \texttt{"timeout"}.
-  \end{columns}
-\end{frame}
-
-\begin{frame}{Replica Set Verification}
-  After both machines were running, the replica set was initialized from the primary:
-
-  \vspace{0.3cm}
-  \begin{columns}
-    \column{0.5\textwidth}
-      \textbf{\texttt{rs.initiate()} command:}
-      \begin{itemize}
-        \item \texttt{\_id: "rs0"}
-        \item Member 0:\\ \texttt{mongo-primary.lan:27017} {\small(priority 2)}
-        \item Member 1:\\ \texttt{mongo-secondary.lan:27017} {\small(priority 1)}
-      \end{itemize}
-
-    \column{0.47\textwidth}
-      \begin{alertblock}{Verified result}
-        \small\texttt{mongo-primary.lan:27017} \textcolor{primary}{\textbf{PRIMARY}}\\[4pt]
-        \small\texttt{mongo-secondary.lan:27017} \textcolor{secondary}{\textbf{SECONDARY}}
-      \end{alertblock}
-  \end{columns}
-
-  \vspace{0.4cm}
-  \begin{block}{Write concern: \texttt{w="majority"}}
-    Every write operation uses \texttt{WriteConcern(w="majority")}, which means MongoDB waits for the primary \emph{and} at least one secondary to acknowledge the write before confirming to the client.
+  \begin{block}{Distributed Requirement}
+    Database nodes run on separate physical macOS machines on the same LAN --- not containers on one machine.
   \end{block}
 \end{frame}
 
-% ─── Section 7 ───────────────────────────────────────────────────────────────
-\section{Results}
-
-\begin{frame}{Test Suite: 13/13 Passed}
+% ── Slide 4: Replica Set Configuration ───────────────────────────────────────
+\begin{frame}[fragile]{Replica Set Configuration}
   \begin{columns}
     \column{0.5\textwidth}
-      \textbf{5 test categories:}
-      \begin{enumerate}
-        \item \textbf{Basic CRUD} --- insert, update, soft delete visible on secondary
-        \item \textbf{Burst writes} --- 10 rapid inserts, all replicated
-        \item \textbf{Large payload} --- 50KB document, data integrity check
-        \item \textbf{Sequential versions} --- 5 updates, correct final version on secondary
-        \item \textbf{Monotonic versions} --- secondary never returns a stale version
-      \end{enumerate}
+      \textbf{Initial issue}
+      \begin{itemize}
+        \item Two voting members: primary + secondary
+        \item Disconnecting secondary removed majority
+        \item MongoDB reported \texttt{ReplicaSetNoPrimary}
+        \item Even \texttt{w=1} could not write --- no writable primary
+      \end{itemize}
 
-    \column{0.47\textwidth}
-      \begin{alertblock}{Result: 13/13 PASS}
+    \column{0.46\textwidth}
+      \begin{alertblock}{Solution: non-voting read replica}
         \begin{itemize}
-          \item \textcolor{primary}{Success rate: 100\%}
-          \item 0 timeouts across all test cases
-          \item Secondary always reflected correct version
-          \item Soft delete flag propagated correctly
-          \item Version monotonicity held across all reads
+          \item Primary: \texttt{votes=1, priority=2}
+          \item Secondary: \texttt{votes=0, priority=0}
         \end{itemize}
+        Primary stays writable during follower outages.
       \end{alertblock}
   \end{columns}
+
+  \vspace{0.25cm}
+  \begin{lstlisting}[language={}]
+cfg = rs.conf()
+cfg.members[1].priority = 0
+cfg.members[1].votes = 0
+rs.reconfig(cfg)
+  \end{lstlisting}
 \end{frame}
 
-
-\begin{frame}{Web Dashboard --- Overview}
-  \begin{center}
-    \includegraphics[width=0.92\textwidth]{first.png}
-  \end{center}
-  \begin{center}
-    \small Live dashboard at \texttt{http://192.168.88.146:5001} --- accessible from both machines simultaneously.
-  \end{center}
-\end{frame}
-
-\begin{frame}{Web Dashboard --- Insert Operation}
-  \begin{center}
-    \includegraphics[width=0.82\textwidth]{insert.png}
-  \end{center}
-  \vspace{0.1cm}
-  \begin{enumerate}
-    \item Write sent to \textcolor{primary}{PRIMARY} with \texttt{w=majority} \quad
-    \item Secondary polled every 10ms until \texttt{version=1} appears \quad
-    \item \texttt{replication\_delay\_ms} logged with \texttt{leader\_write\_time} and \texttt{follower\_visible\_time}
-  \end{enumerate}
-\end{frame}
-
-\begin{frame}{Web Dashboard --- Update Operation}
-  \begin{center}
-    \includegraphics[width=0.82\textwidth]{update.png}
-  \end{center}
-  \vspace{0.1cm}
-  \begin{enumerate}
-    \item New value sent to primary, \texttt{version} increments ($1 \to 2$) \quad
-    \item Secondary polled until \texttt{version} matches \quad
-    \item \textbf{SEC.VER} column shows secondary's version --- mismatch means replication in progress
-  \end{enumerate}
-\end{frame}
-
-\begin{frame}{Web Dashboard --- Delete Operation}
-  \begin{center}
-    \includegraphics[width=0.82\textwidth]{delete.png}
-  \end{center}
-  \vspace{0.1cm}
-  \begin{enumerate}
-    \item \texttt{deleted: true} flag written to primary, \texttt{version} still increments \quad
-    \item Document preserved on secondary for replication timing analysis \quad
-    \item Delay measured identically to insert and update
-  \end{enumerate}
-\end{frame}
-
-% ─── Section 8 ───────────────────────────────────────────────────────────────
-\section{Conclusion \& Next Steps}
-
-\begin{frame}{Conclusion \& Next Steps}
+% ── Slide 5: Schema Design ────────────────────────────────────────────────────
+\begin{frame}[fragile]{Schema Design}
   \begin{columns}
-    \column{0.5\textwidth}
-      \textbf{Completed (Progress Presentation):}
-      \begin{itemize}
-        \item[\checkmark] MongoDB Replica Set on 2 physical machines
-        \item[\checkmark] Replication-aware schema with version tracking
-        \item[\checkmark] Insert / Update / Soft Delete operations
-        \item[\checkmark] Replication delay measurement \& logging
-        \item[\checkmark] 1000-op benchmark (100\% success)
-        \item[\checkmark] 13/13 test assertions passing
-        \item[\checkmark] Live web dashboard (cross-machine)
-      \end{itemize}
+    \column{0.48\textwidth}
+      \textbf{\texttt{items} collection}
+      \begin{lstlisting}[language={}]
+{
+  key,
+  value,
+  version,          -- increments on each write
+  leader_term,
+  last_log_index,
+  last_operation_id,
+  last_updated,
+  deleted           -- soft delete
+}
+      \end{lstlisting}
 
-    \column{0.47\textwidth}
-      \textbf{Planned (Final Report):}
-      \begin{itemize}
-        \item Eventual consistency experiment
-        \item Monotonic reads experiment
-        \item Read-after-write consistency
-        \item Concurrent writes analysis
-        \item Export logs as CSV/JSON
-        \item Statistical analysis \& graphs
-        \item Final report \& presentation PDF
-      \end{itemize}
+    \column{0.48\textwidth}
+      \textbf{\texttt{operation\_logs} collection}
+      \begin{lstlisting}[language={}]
+{
+  operation_id,
+  operation_type,
+  log_index,
+  leader_write_time,
+  follower_visible_time,
+  replication_delay_ms,
+  version_before,
+  version_after,
+  status,           -- pending / visible / timeout
+  write_concern
+}
+      \end{lstlisting}
   \end{columns}
 
-  \vspace{0.4cm}
+  \begin{block}{Raft-inspired metadata}
+    \texttt{leader\_term}, \texttt{log\_index}, \texttt{operation\_id}, and \texttt{version} make update ordering and follower visibility fully observable.
+  \end{block}
+\end{frame}
+
+% ── Slide 6: Write Concern Modes ──────────────────────────────────────────────
+\begin{frame}{Write Concern Modes}
+  \begin{table}
+    \small
+    \begin{tabular}{p{0.18\textwidth}p{0.35\textwidth}p{0.35\textwidth}}
+      \toprule
+      Mode & Secondary \textbf{Up} & Secondary \textbf{Down} \\
+      \midrule
+      \texttt{w=majority} &
+      Write succeeds; replication delay is measured and logged &
+      \textbf{Write rejected} before primary mutation --- no data change \\
+      \addlinespace
+      \texttt{w=1} &
+      Write succeeds immediately; log is reconciled in background &
+      Write succeeds on primary; log stays \texttt{pending\_follower} until catch-up \\
+      \bottomrule
+    \end{tabular}
+  \end{table}
+
+  \vspace{0.2cm}
+  \begin{columns}
+    \column{0.48\textwidth}
+      \begin{alertblock}{\texttt{w=majority} --- Consistency-first}
+        Reject the write rather than risk divergence.
+      \end{alertblock}
+    \column{0.48\textwidth}
+      \begin{block}{\texttt{w=1} --- Availability-first}
+        Accept the write; guarantee eventual delivery via oplog.
+      \end{block}
+  \end{columns}
+\end{frame}
+
+% ── Slide 7: Async Recovery Flow ─────────────────────────────────────────────
+\begin{frame}{Async Recovery Flow (\texttt{w=1})}
+  \begin{columns}
+    \column{0.58\textwidth}
+      \begin{enumerate}
+        \item User switches to \texttt{w=1} on the dashboard.
+        \item Secondary network is disconnected.
+        \item Write goes to primary; log records \texttt{pending\_follower}.
+        \item \textit{Already-synced rows remain marked synced} (proven via prior logs).
+        \item Secondary reconnects.
+        \item MongoDB replays the oplog; secondary catches up.
+        \item Control node reconciler detects version / log-index match.
+        \item Log becomes \texttt{visible\_on\_follower}; sync checkmark appears.
+      \end{enumerate}
+
+    \column{0.38\textwidth}
+      \begin{block}{Key design decisions}
+        \begin{itemize}
+          \item Secondary health uses \texttt{directConnection=true}
+          \item Reconciler runs every second in background thread
+          \item Fallbacks: version $\geq$ expected \textbf{or} log-index $\geq$ expected
+        \end{itemize}
+      \end{block}
+  \end{columns}
+\end{frame}
+
+% ── Slide 8: Dashboard Overview ───────────────────────────────────────────────
+\begin{frame}{Dashboard}
   \begin{center}
-    \large\textbf{Thank you.}\\
-    \vspace{0.2cm}
-    \small Questions?
+    \includegraphics[width=0.90\textwidth]{first.png}
   \end{center}
+  \vspace{-0.1cm}
+  \begin{center}
+    \small Left panel: operations + write concern toggle. \quad Right: item sync state (primary ver vs.\ secondary ver). \quad Bottom: replication delay chart.
+  \end{center}
+\end{frame}
+
+% ── Slide 9: Async Evidence ───────────────────────────────────────────────────
+\begin{frame}{Async Replication Evidence}
+  \begin{center}
+    \includegraphics[width=0.90\textwidth]{dashboard_async.png}
+  \end{center}
+  \vspace{-0.1cm}
+  \begin{center}
+    \small \texttt{w=1} active. New item written while secondary offline: primary version 1, secondary version \texttt{---} (not yet replicated). Health panel shows \texttt{DOWN} / \texttt{CATCHING}. Log status: \texttt{pending\_follower}.
+  \end{center}
+\end{frame}
+
+% ── Slide 10: Results and Conclusion ──────────────────────────────────────────
+\begin{frame}{Results and Conclusion}
+  \begin{columns}
+    \column{0.5\textwidth}
+      \textbf{All manual tests passed}
+      \begin{itemize}
+        \item \texttt{w=majority} + secondary up: write visible on follower
+        \item \texttt{w=majority} + secondary down: write rejected, no primary mutation
+        \item \texttt{w=1} + secondary down: primary write succeeds (\texttt{pending\_follower})
+        \item Reconnect: pending logs reconciled, sync restored
+        \item Old synced rows stay synced during outage
+      \end{itemize}
+
+    \column{0.46\textwidth}
+      \begin{block}{What we proved}
+        \begin{itemize}
+          \item Replication is \textbf{asynchronous by default}
+          \item Write concern controls the \textbf{durability--availability tradeoff}
+          \item Catch-up is driven by the \textbf{MongoDB oplog}, not the application
+          \item \textbf{Observability} (version, log-index, delay) is essential for debugging distributed state
+        \end{itemize}
+      \end{block}
+  \end{columns}
 \end{frame}
 
 \end{document}
