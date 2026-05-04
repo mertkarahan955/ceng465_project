@@ -384,7 +384,115 @@ However, MongoDB generally recommends an odd number of voting replica set member
 
 If later experiments need reliable failover/election behavior, add a third node as an arbiter.
 
-## 9. Next Step After Setup
+## 9. Keep Primary Writable When Secondary Is Offline
+
+For the `w=1` async demo, the leader must remain writable while the secondary/read replica is unavailable. A default two-node replica set usually has two voting members:
+
+```text
+primary vote = 1
+secondary vote = 1
+total votes = 2
+majority = 2
+```
+
+If the secondary goes offline, the primary has only one vote and loses majority. MongoDB then steps the primary down, and clients see an error such as:
+
+```text
+No replica set members match selector "Primary()"
+ReplicaSetNoPrimary
+```
+
+That means there is no writable primary. In this state, `w=1` writes cannot work either, because `w=1` still requires a writable primary.
+
+For the project demo, use one of these layouts:
+
+- primary voting member + secondary non-voting read replica, or
+- primary + secondary + arbiter as a third voting member.
+
+The simplest two-Mac setup is to make the secondary non-voting.
+
+### Recover From Current `ReplicaSetNoPrimary`
+
+If the secondary was disconnected and the dashboard shows `ReplicaSetNoPrimary`, reconnect/start the secondary first. Then wait until a primary is elected again:
+
+```bash
+mongosh --host mongo-primary.lan --port 27017
+```
+
+```js
+rs.status()
+db.hello()
+```
+
+Expected before continuing:
+
+```text
+isWritablePrimary: true
+```
+
+### Convert Secondary To Non-Voting Read Replica
+
+Run this from `mongosh` while connected to the current primary:
+
+```js
+cfg = rs.conf()
+cfg.members[1].priority = 0
+cfg.members[1].votes = 0
+rs.reconfig(cfg)
+```
+
+Verify:
+
+```js
+rs.conf().members.map(m => ({
+  host: m.host,
+  priority: m.priority,
+  votes: m.votes
+}))
+```
+
+Expected:
+
+```js
+[
+  { host: "mongo-primary.lan:27017", priority: 2, votes: 1 },
+  { host: "mongo-secondary.lan:27017", priority: 0, votes: 0 }
+]
+```
+
+After this, disconnect the secondary again and verify the primary remains writable:
+
+```js
+db.hello()
+```
+
+Expected on the primary:
+
+```text
+isWritablePrimary: true
+```
+
+Now the dashboard `w=1` async catch-up demo can work as intended:
+
+1. Secondary is offline.
+2. `w=1` write succeeds on the primary.
+3. Operation log remains `pending_follower`.
+4. Secondary comes back.
+5. MongoDB catches up from the oplog.
+6. Control node marks the pending log as `visible_on_follower`.
+7. Dashboard `sync` field changes to a checkmark.
+
+### Alternative: Add An Arbiter
+
+If failover/election behavior is also part of the demo, add a third voting member as an arbiter instead of making the secondary non-voting. This requires a third reachable `mongod` process:
+
+```js
+rs.addArb("mongo-arbiter.lan:27017")
+```
+
+For the current two-Mac project scope, the non-voting secondary setup is simpler and better aligned with testing async read-replica catch-up.
+
+## 10. Next Step After Setup
 
 After `rs.status()` shows one Primary and one Secondary, implement the Python control node:
 

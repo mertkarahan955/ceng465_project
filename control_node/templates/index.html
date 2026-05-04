@@ -159,6 +159,8 @@
     .pill-delete { background: rgba(248,81,73,.15); color: var(--red); }
     .pill-ok { background: rgba(63,185,80,.1); color: var(--green); }
     .pill-timeout { background: rgba(248,81,73,.1); color: var(--red); }
+    .pill-visible_on_follower { background: rgba(63,185,80,.1); color: var(--green); }
+    .pill-pending_follower { background: rgba(210,153,34,.14); color: var(--yellow); }
 
     .sync-icon { font-size: 14px; }
     .deleted-row td { opacity: .45; }
@@ -214,8 +216,8 @@
 <!-- ── Header ── -->
 <header>
   <h1>CENG465 — Single-Leader Replication Dashboard</h1>
-  <span class="badge primary"><span class="dot"></span>PRIMARY &nbsp;<span id="hdr-primary">mongo-primary.lan</span></span>
-  <span class="badge secondary"><span class="dot"></span>SECONDARY &nbsp;<span id="hdr-secondary">mongo-secondary.lan</span></span>
+  <span class="badge primary" id="badge-primary"><span class="dot"></span>PRIMARY &nbsp;<span id="hdr-primary">mongo-primary.lan</span></span>
+  <span class="badge secondary" id="badge-secondary"><span class="dot"></span>SECONDARY &nbsp;<span id="hdr-secondary">mongo-secondary.lan</span></span>
   <div class="stats-bar">
     <div class="stat"><div class="val" id="stat-total">0</div><div class="lbl">Total Ops</div></div>
     <div class="stat"><div class="val" id="stat-p50" style="color:var(--green)">—</div><div class="lbl">p50 Delay</div></div>
@@ -298,6 +300,19 @@
         <strong style="color:var(--green)">w=majority</strong>: write blocks until secondary ACKs — appears synchronous.<br>
         Switch to <strong style="color:var(--orange)">w=1</strong> to make writes fire-and-forget (true async).
       </div>
+    </div>
+
+    <!-- Replica health -->
+    <div>
+      <div class="panel-title">Replica Health</div>
+      <div style="height:10px"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div class="stat-card"><div class="val" id="health-state" style="font-size:15px">—</div><div class="lbl">secondary</div></div>
+        <div class="stat-card"><div class="val" id="health-pending" style="font-size:15px">—</div><div class="lbl">pending logs</div></div>
+        <div class="stat-card"><div class="val" id="health-reconciled" style="font-size:15px">—</div><div class="lbl">last catch-up</div></div>
+        <div class="stat-card"><div class="val" id="health-checked" style="font-size:15px">—</div><div class="lbl">last check</div></div>
+      </div>
+      <div id="health-error" style="display:none;margin-top:8px;font-size:10px;color:var(--red);line-height:1.4;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px"></div>
     </div>
 
     <!-- Stats -->
@@ -483,7 +498,9 @@ function renderLogs(data) {
     const tr = document.createElement('tr');
     const delay = log.replication_delay_ms !== null
       ? `<span style="color:var(--orange);font-weight:700">${log.replication_delay_ms?.toFixed(2)}</span>`
-      : '<span style="color:var(--red)">timeout</span>';
+      : (log.status === 'pending_follower'
+        ? '<span style="color:var(--yellow)">pending</span>'
+        : '<span style="color:var(--red)">timeout</span>');
     const lw = log.leader_write_time ? log.leader_write_time.replace('T',' ').slice(11,23) : '—';
     const fw = log.follower_visible_time ? log.follower_visible_time.replace('T',' ').slice(11,23) : '<span style="color:var(--red)">—</span>';
     const ver = `${log.version_before ?? '—'} → ${log.version_after ?? '—'}`;
@@ -540,10 +557,80 @@ function updateStats(logData) {
 }
 
 // ── API calls ──────────────────────────────────────────────
+async function refreshStatus() {
+  try {
+    const res = await fetch('/api/status');
+    const status = await res.json();
+    renderStatus(status);
+  } catch(e) {
+    renderStatus({
+      primary: { reachable: false, writable: false, host: 'mongo-primary.lan:27017', error: e.message },
+      secondary: { reachable: false, secondary: false, host: 'mongo-secondary.lan:27017', error: e.message },
+      secondary_health: { reachable: false, last_error: e.message },
+    });
+  }
+}
+
+function renderStatus(status) {
+  const primary = status.primary || {};
+  const secondary = status.secondary || {};
+  const health = status.secondary_health || {};
+
+  document.getElementById('hdr-primary').textContent = primary.host || 'mongo-primary.lan:27017';
+  document.getElementById('hdr-secondary').textContent = secondary.host || 'mongo-secondary.lan:27017';
+
+  paintBadge('badge-primary', primary.reachable && primary.writable, 'green');
+  paintBadge('badge-secondary', health.reachable || secondary.reachable, 'blue');
+
+  const reachable = Boolean(health.reachable || secondary.reachable);
+  const primaryOk = Boolean(primary.reachable && primary.writable);
+  const pending = health.pending_count ?? 0;
+  const stateEl = document.getElementById('health-state');
+  stateEl.textContent = !primaryOk ? 'NO PRIMARY' : (reachable ? (pending > 0 ? 'CATCHING' : 'UP') : 'DOWN');
+  stateEl.style.color = !primaryOk ? 'var(--red)' : (reachable ? (pending > 0 ? 'var(--yellow)' : 'var(--green)') : 'var(--red)');
+
+  const pendingEl = document.getElementById('health-pending');
+  pendingEl.textContent = pending;
+  pendingEl.style.color = pending > 0 ? 'var(--yellow)' : 'var(--green)';
+
+  document.getElementById('health-reconciled').textContent = health.last_reconcile_count ?? 0;
+  document.getElementById('health-checked').textContent = shortTime(health.last_checked_at);
+
+  const err = document.getElementById('health-error');
+  if (!primaryOk && primary.error) {
+    err.textContent = `Primary unavailable: ${primary.error}`.slice(0, 220);
+    err.style.display = 'block';
+  } else if (!reachable && health.last_error) {
+    err.textContent = health.last_error.slice(0, 180);
+    err.style.display = 'block';
+  } else {
+    err.style.display = 'none';
+  }
+}
+
+function paintBadge(id, ok, colorName) {
+  const el = document.getElementById(id);
+  const dot = el.querySelector('.dot');
+  const color = ok ? `var(--${colorName})` : 'var(--red)';
+  el.style.borderColor = color;
+  el.style.color = color;
+  dot.style.background = color;
+  dot.style.boxShadow = `0 0 6px ${color}`;
+}
+
+function shortTime(value) {
+  if (!value) return '—';
+  return String(value).replace('T',' ').slice(11,19);
+}
+
 async function refreshItems() {
-  const res = await fetch('/api/items');
-  items = await res.json();
-  renderItems(items);
+  try {
+    const res = await fetch('/api/items');
+    items = await res.json();
+    renderItems(items);
+  } catch(e) {
+    items = [];
+  }
 }
 
 async function refreshLogs() {
@@ -554,7 +641,7 @@ async function refreshLogs() {
   updateChart(logs);
 }
 
-function refreshAll() { refreshItems(); refreshLogs(); }
+function refreshAll() { refreshStatus(); refreshItems(); refreshLogs(); }
 
 // ── Operations ─────────────────────────────────────────────
 async function apiFetch(url, body) {
@@ -584,8 +671,9 @@ async function doInsert() {
   showResult('insert', '<span style="color:var(--muted)">Inserting…</span>');
   const data = await apiFetch('/api/insert', {key, value});
   if (data.ok) {
-    showResult('insert', `<span class="delay">✓ ${data.delay_ms?.toFixed(2) ?? 'timeout'} ms</span> &nbsp;<span style="color:var(--muted)">id: …${data.item_id.slice(-8)}</span>`);
-    toast(`Insert: ${data.delay_ms?.toFixed(2) ?? 'timeout'} ms`);
+    const msg = formatWriteResult(data, `id: …${data.item_id.slice(-8)}`);
+    showResult('insert', msg.html);
+    toast(`Insert: ${msg.toast}`);
     refreshAll();
   } else {
     showResult('insert', `<span class="err">✗ ${data.error}</span>`);
@@ -602,8 +690,9 @@ async function doUpdate() {
   showResult('update', '<span style="color:var(--muted)">Updating…</span>');
   const data = await apiFetch('/api/update', {item_id, value});
   if (data.ok) {
-    showResult('update', `<span class="delay">✓ ${data.delay_ms?.toFixed(2) ?? 'timeout'} ms</span>`);
-    toast(`Update: ${data.delay_ms?.toFixed(2) ?? 'timeout'} ms`);
+    const msg = formatWriteResult(data);
+    showResult('update', msg.html);
+    toast(`Update: ${msg.toast}`);
     refreshAll();
   } else {
     showResult('update', `<span class="err">✗ ${data.error}</span>`);
@@ -617,8 +706,9 @@ async function doDelete() {
   showResult('delete', '<span style="color:var(--muted)">Deleting…</span>');
   const data = await apiFetch('/api/delete', {item_id});
   if (data.ok) {
-    showResult('delete', `<span class="delay">✓ ${data.delay_ms?.toFixed(2) ?? 'timeout'} ms</span>`);
-    toast(`Delete: ${data.delay_ms?.toFixed(2) ?? 'timeout'} ms`);
+    const msg = formatWriteResult(data);
+    showResult('delete', msg.html);
+    toast(`Delete: ${msg.toast}`);
     refreshAll();
   } else {
     showResult('delete', `<span class="err">✗ ${data.error}</span>`);
@@ -637,6 +727,25 @@ function showResult(op, html) {
   const el = document.getElementById(`res-${op}`);
   el.innerHTML = html;
   el.classList.add('show');
+}
+
+function formatWriteResult(data, suffix='') {
+  if (data.status === 'pending_follower') {
+    return {
+      html: `<span style="color:var(--yellow);font-weight:700">queued on leader</span>${suffix ? ` &nbsp;<span style="color:var(--muted)">${suffix}</span>` : ''}`,
+      toast: 'queued on leader',
+    };
+  }
+  if (data.delay_ms !== null && data.delay_ms !== undefined) {
+    return {
+      html: `<span class="delay">✓ ${data.delay_ms.toFixed(2)} ms</span>${suffix ? ` &nbsp;<span style="color:var(--muted)">${suffix}</span>` : ''}`,
+      toast: `${data.delay_ms.toFixed(2)} ms`,
+    };
+  }
+  return {
+    html: `<span class="err">timeout</span>${suffix ? ` &nbsp;<span style="color:var(--muted)">${suffix}</span>` : ''}`,
+    toast: 'timeout',
+  };
 }
 
 function toast(msg) {

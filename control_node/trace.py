@@ -55,8 +55,12 @@ def build_table() -> Table:
     for r in rows:
         op = r["operation_type"]
         color = OP_COLORS.get(op, "white")
-        delay = f"{r['replication_delay_ms']:.2f} ms" if r["replication_delay_ms"] is not None else "[red]timeout[/red]"
-        status_color = "green" if r["status"] == "visible_on_follower" else "red"
+        delay = (
+            f"{r['replication_delay_ms']:.2f} ms"
+            if r["replication_delay_ms"] is not None
+            else ("[yellow]pending[/yellow]" if r["status"] == "pending_follower" else "[red]timeout[/red]")
+        )
+        status_color = "green" if r["status"] == "visible_on_follower" else ("yellow" if r["status"] == "pending_follower" else "red")
         vb = str(r.get("version_before") or "—")
         va = str(r.get("version_after") or "—")
 
@@ -111,13 +115,19 @@ def main():
 
     with Live(build_table(), console=console, refresh_per_second=4, screen=False) as live:
         with collection.watch(
-            [{"$match": {"operationType": "insert"}}],
+            [{"$match": {"operationType": {"$in": ["insert", "update", "replace"]}}}],
             full_document="updateLookup",
         ) as stream:
             for event in stream:
                 doc = event.get("fullDocument")
                 if doc:
-                    rows.append(doc)
+                    for i, row in enumerate(rows):
+                        if row.get("_id") == doc.get("_id"):
+                            rows[i] = doc
+                            break
+                    else:
+                        rows.append(doc)
+                    rows.sort(key=lambda r: r.get("log_index", 0))
                     live.update(build_table())
 
 
