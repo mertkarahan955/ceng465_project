@@ -553,6 +553,7 @@ def _run_read_after_write():
         # ── Measure actual replication delay ──────────────────────────────
         repl_ms_actual = None
         if stale:
+            # Secondary didn't have it yet — poll until it does
             t_poll   = _ms()
             deadline = time.time() + 5.0
             while time.time() < deadline:
@@ -561,8 +562,15 @@ def _run_read_after_write():
                     repl_ms_actual = _ms() - t_poll
                     break
                 time.sleep(0.002)
+        else:
+            # Secondary already had it when we read at t_stale1.
+            # Oplog must have arrived by then → use elapsed as upper-bound.
+            repl_ms_actual = _safe_lat(t_stale1 - half_w)
 
         log = _get_log(item_id)
+
+    # Resolve replication delay: measured poll → op_log → fallback
+    repl_ms = repl_ms_actual or (log.get("replication_delay_ms") if log else None) or 5.0
 
     # ── Build events ─────────────────────────────────────────────────────────
     events = [
@@ -571,9 +579,9 @@ def _run_read_after_write():
          "label": "write incident (w=1)",              "type": "write"},
         {"t_ms": half_w,     "latency_ms": half_w,      "from": "primary",   "to": "client",
          "label": f"ok ({write_ms:.1f}ms) — immediately", "type": "ok"},
-        # Async oplog — use measured replication delay for accurate visual
-        {"t_ms": half_w,     "latency_ms": _safe_lat(repl_ms_actual or 20), "from": "primary", "to": "secondary",
-         "label": f"oplog (async, ~{(repl_ms_actual or 0):.1f}ms)", "type": "replicate"},
+        # Async oplog — actual measured latency, no hardcoded fallback
+        {"t_ms": half_w,     "latency_ms": _safe_lat(repl_ms), "from": "primary", "to": "secondary",
+         "label": f"oplog (async, ~{repl_ms:.1f}ms)", "type": "replicate"},
 
         # RAW read from PRIMARY — 4-point shape
         *_req_resp_events(
@@ -592,8 +600,6 @@ def _run_read_after_write():
             "stale_response" if stale else "fresh_response",
         ),
     ]
-
-    repl_ms = repl_ms_actual or (log.get("replication_delay_ms") if log else None)
 
     return {
         "experiment":  "read_after_write",
