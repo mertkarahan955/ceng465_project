@@ -163,7 +163,7 @@ def run_concurrent_writes():
     order_preserved = log_indexes == sorted(log_indexes)
 
     repl_ms              = repl_ms_actual or 5.0
-    oplog_start_ms       = safe_lat(net_p)
+    oplog_start_ms       = burst_done          # oplog streams after the concurrent burst completes
     secondary_applied_ms = t_poll_rel + (repl_ms_actual or 0)
     total_repl_ms        = secondary_applied_ms - burst_done
 
@@ -172,18 +172,28 @@ def run_concurrent_writes():
 
     # Phase A: each user's writes on their own lane
     for w in results_a:
+        _vdata = {"vehicle_id": w["vid"], "type": "truck",
+                  "capacity": 5000 + (w["seq"] - 1) * 100, "year": 2020 + (w["seq"] - 1)}
         events += req_resp_events(
             w["t_send"], w["t_recv"], net_p,
             "user_a", "primary",
             f"write {w['vid']} (w=1)", "write",
             f"ok — A{w['seq']}", "ok",
+            req_meta={"collection": "vehicles", "db_action": "insert", "data": _vdata},
+            resp_meta={"collection": "vehicles", "db_action": "insert",
+                       "document_id": str(w["id"]), "version": 1, "data": _vdata},
         )
     for w in results_b:
+        _vdata = {"vehicle_id": w["vid"], "type": "truck",
+                  "capacity": 5000 + (w["seq"] - 1) * 100, "year": 2020 + (w["seq"] - 1)}
         events += req_resp_events(
             w["t_send"], w["t_recv"], net_p,
             "user_b", "primary",
             f"write {w['vid']} (w=1)", "write",
             f"ok — B{w['seq']}", "ok",
+            req_meta={"collection": "vehicles", "db_action": "insert", "data": _vdata},
+            resp_meta={"collection": "vehicles", "db_action": "insert",
+                       "document_id": str(w["id"]), "version": 1, "data": _vdata},
         )
 
     # Oplog: batch of all writes streams to secondary
@@ -194,6 +204,8 @@ def run_concurrent_writes():
         "to":         "secondary",
         "label":      f"oplog batch ({total_writes} writes, async, ~{repl_ms:.1f}ms)",
         "type":       "replicate",
+        "collection": "vehicles",
+        "db_action":  "replicate",
     })
     events.append({
         "t_ms":       secondary_applied_ms,
@@ -202,6 +214,7 @@ def run_concurrent_writes():
         "to":         "primary",
         "label":      f"all {total_writes} applied — {total_repl_ms:.0f}ms after burst",
         "type":       "ack",
+        "collection": "vehicles",
     })
 
     # Phase B: snapshot read from secondary (use user_a lane as the "reader")
@@ -213,6 +226,9 @@ def run_concurrent_writes():
             " ⚡ async lag" if visible_immediately < total_writes else " ✓ all present"
         ),
         "stale_response" if visible_immediately < total_writes else "fresh_response",
+        req_meta={"collection": "vehicles", "db_action": "find"},
+        resp_meta={"collection": "vehicles", "db_action": "find",
+                   "version": visible_immediately},
     )
 
     # Phase C: final ordered read (use user_b lane)
@@ -222,6 +238,9 @@ def run_concurrent_writes():
         f"final read — order check ({total_writes} docs)", "read",
         "✓ log_index order preserved" if order_preserved else "⚡ ORDER VIOLATED",
         "fresh_response" if order_preserved else "stale_response",
+        req_meta={"collection": "vehicles", "db_action": "find"},
+        resp_meta={"collection": "vehicles", "db_action": "find",
+                   "version": total_writes},
     )
 
     log = db.get_primary()["operation_logs"].find_one(

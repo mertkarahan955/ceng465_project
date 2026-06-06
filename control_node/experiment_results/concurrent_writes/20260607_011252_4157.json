@@ -1,0 +1,269 @@
+{
+  "saved_at": "2026-06-07T01:12:52.416432",
+  "experiment": "concurrent_writes",
+  "title": "Concurrent Writes — Propagation Order",
+  "description": "User A and User B each fire 3 w=1 writes simultaneously. PRIMARY serialises all writes (log_index). SECONDARY must apply them in the same order — never out of sequence.",
+  "actors": {
+    "user_a": {
+      "label": "User A",
+      "color": "#79c0ff",
+      "ip": "(thread A)"
+    },
+    "user_b": {
+      "label": "User B",
+      "color": "#f0883e",
+      "ip": "(thread B)"
+    },
+    "primary": {
+      "label": "PRIMARY",
+      "color": "#3fb950",
+      "ip": "192.168.88.30"
+    },
+    "secondary": {
+      "label": "SECONDARY",
+      "color": "#a371f7",
+      "ip": "192.168.88.70"
+    }
+  },
+  "actor_order": [
+    "user_a",
+    "user_b",
+    "primary",
+    "secondary"
+  ],
+  "events": [
+    {
+      "t_ms": 0.18798828125,
+      "latency_ms": 0.5,
+      "from": "user_a",
+      "to": "primary",
+      "label": "write CW-A1 (w=1)",
+      "type": "write"
+    },
+    {
+      "t_ms": 16.774169921875,
+      "latency_ms": 0.5,
+      "from": "primary",
+      "to": "user_a",
+      "label": "ok — A1",
+      "type": "ok"
+    },
+    {
+      "t_ms": 17.2880859375,
+      "latency_ms": 0.5,
+      "from": "user_a",
+      "to": "primary",
+      "label": "write CW-A2 (w=1)",
+      "type": "write"
+    },
+    {
+      "t_ms": 25.19384765625,
+      "latency_ms": 0.5,
+      "from": "primary",
+      "to": "user_a",
+      "label": "ok — A2",
+      "type": "ok"
+    },
+    {
+      "t_ms": 25.7001953125,
+      "latency_ms": 0.5,
+      "from": "user_a",
+      "to": "primary",
+      "label": "write CW-A3 (w=1)",
+      "type": "write"
+    },
+    {
+      "t_ms": 33.748046875,
+      "latency_ms": 0.5,
+      "from": "primary",
+      "to": "user_a",
+      "label": "ok — A3",
+      "type": "ok"
+    },
+    {
+      "t_ms": 0.530029296875,
+      "latency_ms": 0.5,
+      "from": "user_b",
+      "to": "primary",
+      "label": "write CW-B1 (w=1)",
+      "type": "write"
+    },
+    {
+      "t_ms": 24.864990234375,
+      "latency_ms": 0.5,
+      "from": "primary",
+      "to": "user_b",
+      "label": "ok — B1",
+      "type": "ok"
+    },
+    {
+      "t_ms": 25.370849609375,
+      "latency_ms": 0.5,
+      "from": "user_b",
+      "to": "primary",
+      "label": "write CW-B2 (w=1)",
+      "type": "write"
+    },
+    {
+      "t_ms": 33.2109375,
+      "latency_ms": 0.5,
+      "from": "primary",
+      "to": "user_b",
+      "label": "ok — B2",
+      "type": "ok"
+    },
+    {
+      "t_ms": 33.720947265625,
+      "latency_ms": 0.5,
+      "from": "user_b",
+      "to": "primary",
+      "label": "write CW-B3 (w=1)",
+      "type": "write"
+    },
+    {
+      "t_ms": 41.134033203125,
+      "latency_ms": 0.5,
+      "from": "primary",
+      "to": "user_b",
+      "label": "ok — B3",
+      "type": "ok"
+    },
+    {
+      "t_ms": 41.634033203125,
+      "latency_ms": 8.294921875,
+      "from": "primary",
+      "to": "secondary",
+      "label": "oplog batch (6 writes, async, ~144.5ms)",
+      "type": "replicate"
+    },
+    {
+      "t_ms": 246.218017578125,
+      "latency_ms": 8.294921875,
+      "from": "secondary",
+      "to": "primary",
+      "label": "all 6 applied — 205ms after burst",
+      "type": "ack"
+    },
+    {
+      "t_ms": 41.787841796875,
+      "latency_ms": 8.294921875,
+      "from": "user_a",
+      "to": "secondary",
+      "label": "snapshot read (right after burst)",
+      "type": "read"
+    },
+    {
+      "t_ms": 93.3779296875,
+      "latency_ms": 8.294921875,
+      "from": "secondary",
+      "to": "user_a",
+      "label": "6/6 visible ✓ all present",
+      "type": "fresh_response"
+    },
+    {
+      "t_ms": 246.22119140625,
+      "latency_ms": 8.294921875,
+      "from": "user_b",
+      "to": "secondary",
+      "label": "final read — order check (6 docs)",
+      "type": "read"
+    },
+    {
+      "t_ms": 285.8291015625,
+      "latency_ms": 8.294921875,
+      "from": "secondary",
+      "to": "user_b",
+      "label": "✓ log_index order preserved",
+      "type": "fresh_response"
+    }
+  ],
+  "log": {
+    "log_index": 689,
+    "operation_id": "8b599d65",
+    "version_before": null,
+    "version_after": 1,
+    "write_concern": "1",
+    "status": "pending_follower",
+    "replication_delay_ms": null,
+    "leader_write_time": "2026-06-06T22:12:52.153000",
+    "follower_visible_time": null,
+    "target_collection": "vehicles"
+  },
+  "reads": [
+    {
+      "user": "user_a",
+      "vid": "CW-A1",
+      "t_ms": 41.787841796875,
+      "t_end_ms": 101.6728515625,
+      "visible": true,
+      "version": 1,
+      "status": "visible"
+    },
+    {
+      "user": "user_b",
+      "vid": "CW-B1",
+      "t_ms": 41.787841796875,
+      "t_end_ms": 101.6728515625,
+      "visible": true,
+      "version": 1,
+      "status": "visible"
+    },
+    {
+      "user": "user_a",
+      "vid": "CW-A2",
+      "t_ms": 41.787841796875,
+      "t_end_ms": 101.6728515625,
+      "visible": true,
+      "version": 1,
+      "status": "visible"
+    },
+    {
+      "user": "user_b",
+      "vid": "CW-B2",
+      "t_ms": 41.787841796875,
+      "t_end_ms": 101.6728515625,
+      "visible": true,
+      "version": 1,
+      "status": "visible"
+    },
+    {
+      "user": "user_a",
+      "vid": "CW-A3",
+      "t_ms": 41.787841796875,
+      "t_end_ms": 101.6728515625,
+      "visible": true,
+      "version": 1,
+      "status": "visible"
+    },
+    {
+      "user": "user_b",
+      "vid": "CW-B3",
+      "t_ms": 41.787841796875,
+      "t_end_ms": 101.6728515625,
+      "visible": true,
+      "version": 1,
+      "status": "visible"
+    }
+  ],
+  "summary": {
+    "writes_per_user": 3,
+    "total_writes": 6,
+    "visible_immediately": 6,
+    "visible_pct": 100,
+    "avg_write_ms_user_a": 11.35,
+    "avg_write_ms_user_b": 13.7,
+    "replication_delay_ms": 144.5,
+    "order_preserved": true,
+    "order_violated": false,
+    "log_index_sequence": [
+      684,
+      685,
+      686,
+      687,
+      688,
+      689
+    ],
+    "consistency_model": "Concurrent Writes",
+    "consistency_achieved": true
+  }
+}
