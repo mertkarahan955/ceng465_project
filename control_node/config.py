@@ -26,3 +26,9 @@ HEALTHCHECK_INTERVAL_MS = 1000
 
 # Fleet domain — the 6 collections that replace the generic "items" collection.
 FLEET_COLLECTIONS = ["vehicles", "drivers", "depots", "shipments", "positions", "incidents"]
+
+# Node timing servers — lightweight Flask servers running on primary/secondary machines.
+# Start with: python node_server.py  (see node_server.py in repo root)
+NODE_SERVER_PORT = 5002
+PRIMARY_NODE_SERVER_URL   = f"http://{PRIMARY_HOST}:{NODE_SERVER_PORT}"
+SECONDARY_NODE_SERVER_URL = f"http://{SECONDARY_HOST}:{NODE_SERVER_PORT}"
