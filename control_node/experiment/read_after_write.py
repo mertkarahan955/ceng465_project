@@ -28,6 +28,16 @@ def run_read_after_write():
     net_p = measure_net_one_way(db.get_primary,   config.PRIMARY_NODE_SERVER_URL)
     net_s = measure_net_one_way(db.get_secondary, config.SECONDARY_NODE_SERVER_URL)
 
+    incident_value = {
+        "vehicle_id": "RAW-EXP",
+        "incident_type": "breakdown",
+        "severity": "critical",
+        "description": "RAW demo — dispatcher files incident",
+        "lat": None,
+        "lng": None,
+        "resolved": False,
+    }
+
     with write_concern(1):
         t0 = ms()
         item_id, _ = operations.insert_incident(
@@ -81,18 +91,36 @@ def run_read_after_write():
             "client", "primary",
             "write incident (w=1)", "write",
             f"ok ({write_ms:.1f}ms) — immediately", "ok",
+            req_meta={
+                "collection": "incidents",
+                "db_action": "insert",
+                "document_id": str(item_id),
+                "version": "v1",
+                "data": incident_value,
+            },
+            resp_meta={
+                "collection": "incidents",
+                "db_action": "write_ack",
+                "document_id": str(item_id),
+                "version": "v1",
+                "data": incident_value,
+            },
         ),
         # Async oplog: primary sends after commit; secondary applies at secondary_applied_ms
         {"t_ms": safe_lat(net_p),
          "latency_ms": safe_lat(net_s),
          "from": "primary", "to": "secondary",
-         "label": "oplog (async)", "type": "replicate"},
+         "label": "oplog (async)", "type": "replicate",
+         "collection": "incidents", "db_action": "replicate_insert",
+         "document_id": str(item_id), "version": "v1", "data": incident_value},
         # Ack from secondary when write is applied — pairs with oplog for span line
         {"t_ms": secondary_applied_ms,
          "latency_ms": safe_lat(net_s),
          "from": "secondary", "to": "primary",
          "label": f"{'✓' if not stale else '✓'} write applied — {total_repl_ms:.0f}ms after write",
-         "type": "ack"},
+         "type": "ack",
+         "collection": "incidents", "db_action": "applied_on_secondary",
+         "document_id": str(item_id), "version": "v1", "data": incident_value},
 
         # RAW read from PRIMARY — N_/ (N=network) shape using measured net_p
         *req_resp_events(
@@ -100,6 +128,18 @@ def run_read_after_write():
             "client", "primary",
             "read (RAW path — PRIMARY)", "read",
             f"✓ fresh ({t_raw2 - t_raw1:.1f}ms) — always", "fresh_response",
+            req_meta={
+                "collection": "incidents",
+                "db_action": "read",
+                "document_id": str(item_id),
+            },
+            resp_meta={
+                "collection": "incidents",
+                "db_action": "read_result",
+                "document_id": str(item_id),
+                "version": f"v{pri_doc.get('version')}" if pri_doc else "not found",
+                "data": pri_doc.get("value") if pri_doc else None,
+            },
         ),
 
         # Stale read from SECONDARY — N_/ (N=network) shape using measured net_s
@@ -109,6 +149,18 @@ def run_read_after_write():
             "read (wrong path)", "read",
             "⚡ stale! (write not propagated)" if stale else "✓ fresh (fast sync)",
             "stale_response" if stale else "fresh_response",
+            req_meta={
+                "collection": "incidents",
+                "db_action": "read",
+                "document_id": str(item_id),
+            },
+            resp_meta={
+                "collection": "incidents",
+                "db_action": "read_result",
+                "document_id": str(item_id),
+                "version": f"v{sec_doc.get('version')}" if sec_doc else "not visible on secondary",
+                "data": sec_doc.get("value") if sec_doc else None,
+            },
         ),
     ]
 

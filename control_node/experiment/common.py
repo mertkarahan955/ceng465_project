@@ -112,6 +112,8 @@ def req_resp_events(
     req_type: str,
     resp_label: str,
     resp_type: str,
+    req_meta: dict | None = None,
+    resp_meta: dict | None = None,
 ) -> list:
     """Build a matched request+response event pair with proper 4-point timing.
 
@@ -129,8 +131,8 @@ def req_resp_events(
     net = safe_lat(net)
     ok_depart = max(t_recv - net, t_send + net + 0.5)
     return [
-        {"t_ms": t_send,    "latency_ms": net, "from": from_actor, "to": to_actor,   "label": req_label,  "type": req_type},
-        {"t_ms": ok_depart, "latency_ms": net, "from": to_actor,   "to": from_actor, "label": resp_label, "type": resp_type},
+        {"t_ms": t_send,    "latency_ms": net, "from": from_actor, "to": to_actor,   "label": req_label,  "type": req_type,  **(req_meta or {})},
+        {"t_ms": ok_depart, "latency_ms": net, "from": to_actor,   "to": from_actor, "label": resp_label, "type": resp_type, **(resp_meta or {})},
     ]
 
 

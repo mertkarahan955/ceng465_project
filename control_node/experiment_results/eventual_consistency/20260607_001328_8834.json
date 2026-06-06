@@ -1,0 +1,260 @@
+{
+  "saved_at": "2026-06-07T00:13:28.883831",
+  "experiment": "eventual_consistency",
+  "title": "Eventual Consistency (w=1)",
+  "description": "PRIMARY w=1 ile günceller — OK secondary beklenmeden döner. SECONDARY stale (eski) veriyi gösterir, sonra yakalar. İnterleaved okumalar PRIMARY/SECONDARY tutarsızlık penceresini gösterir.",
+  "actors": {
+    "client": {
+      "label": "Client / Dashboard",
+      "color": "#e6edf3",
+      "ip": "(control node)"
+    },
+    "primary": {
+      "label": "PRIMARY",
+      "color": "#3fb950",
+      "ip": "192.168.88.30"
+    },
+    "secondary": {
+      "label": "SECONDARY",
+      "color": "#58a6ff",
+      "ip": "192.168.88.70"
+    }
+  },
+  "actor_order": [
+    "client",
+    "primary",
+    "secondary"
+  ],
+  "events": [
+    {
+      "t_ms": 0.02001953125,
+      "latency_ms": 6.223876953125,
+      "from": "client",
+      "to": "primary",
+      "label": "write v2 (w=1)",
+      "type": "write"
+    },
+    {
+      "t_ms": 31.077392578125,
+      "latency_ms": 6.223876953125,
+      "from": "primary",
+      "to": "client",
+      "label": "ok (37.3ms) — no secondary wait",
+      "type": "ok"
+    },
+    {
+      "t_ms": 6.243896484375,
+      "latency_ms": 2.5157470703125,
+      "from": "primary",
+      "to": "secondary",
+      "label": "oplog async",
+      "type": "replicate"
+    },
+    {
+      "t_ms": 1192.418212890625,
+      "latency_ms": 2.5157470703125,
+      "from": "secondary",
+      "to": "primary",
+      "label": "✓ consistent (v2) — 1192ms after write",
+      "type": "ack"
+    },
+    {
+      "t_ms": 242.34912109375,
+      "latency_ms": 2.5157470703125,
+      "from": "client",
+      "to": "secondary",
+      "label": "read secondary #1",
+      "type": "read"
+    },
+    {
+      "t_ms": 245.3648681640625,
+      "latency_ms": 2.5157470703125,
+      "from": "secondary",
+      "to": "client",
+      "label": "⚡ secondary v1 vs primary v2 (inconsistent)",
+      "type": "stale_response"
+    },
+    {
+      "t_ms": 244.64794921875,
+      "latency_ms": 6.223876953125,
+      "from": "client",
+      "to": "primary",
+      "label": "read primary #1 (leader reference)",
+      "type": "read"
+    },
+    {
+      "t_ms": 251.371826171875,
+      "latency_ms": 6.223876953125,
+      "from": "primary",
+      "to": "client",
+      "label": "✓ primary v2 — leader ahead of secondary v1",
+      "type": "fresh_response"
+    },
+    {
+      "t_ms": 592.366943359375,
+      "latency_ms": 2.5157470703125,
+      "from": "client",
+      "to": "secondary",
+      "label": "read secondary #2",
+      "type": "read"
+    },
+    {
+      "t_ms": 595.3826904296875,
+      "latency_ms": 2.5157470703125,
+      "from": "secondary",
+      "to": "client",
+      "label": "⚡ secondary v1 vs primary v2 (inconsistent)",
+      "type": "stale_response"
+    },
+    {
+      "t_ms": 595.22216796875,
+      "latency_ms": 6.223876953125,
+      "from": "client",
+      "to": "primary",
+      "label": "read primary #2 (leader reference)",
+      "type": "read"
+    },
+    {
+      "t_ms": 601.946044921875,
+      "latency_ms": 6.223876953125,
+      "from": "primary",
+      "to": "client",
+      "label": "✓ primary v2 — leader ahead of secondary v1",
+      "type": "fresh_response"
+    },
+    {
+      "t_ms": 1192.418212890625,
+      "latency_ms": 2.5157470703125,
+      "from": "client",
+      "to": "secondary",
+      "label": "read secondary #3 (eventual convergence)",
+      "type": "read"
+    },
+    {
+      "t_ms": 1197.2332763671875,
+      "latency_ms": 2.5157470703125,
+      "from": "secondary",
+      "to": "client",
+      "label": "✓ secondary v2 = primary v2 (finally consistent)",
+      "type": "fresh_response"
+    }
+  ],
+  "log": {
+    "log_index": 532,
+    "operation_id": "c31bdf1f",
+    "version_before": null,
+    "version_after": 1,
+    "write_concern": "1",
+    "status": "visible_on_follower",
+    "replication_delay_ms": 367.196,
+    "leader_write_time": "2026-06-06T21:13:26.403000",
+    "follower_visible_time": "2026-06-06T21:13:26.770000",
+    "target_collection": "positions"
+  },
+  "reads": [
+    {
+      "node": "secondary",
+      "label": "read secondary #1",
+      "t_ms": 242.34912109375,
+      "t_end_ms": 244.607177734375,
+      "version": 1,
+      "reference_version": 2,
+      "stale": true,
+      "nodes_consistent": false,
+      "status": "follower lagging behind leader"
+    },
+    {
+      "node": "primary",
+      "label": "read primary #1 (leader reference)",
+      "t_ms": 244.64794921875,
+      "t_end_ms": 253.708984375,
+      "version": 2,
+      "reference_version": 1,
+      "stale": false,
+      "nodes_consistent": false,
+      "status": "leader has v2; follower still v1"
+    },
+    {
+      "node": "secondary",
+      "label": "read secondary #2",
+      "t_ms": 592.366943359375,
+      "t_end_ms": 595.204833984375,
+      "version": 1,
+      "reference_version": 2,
+      "stale": true,
+      "nodes_consistent": false,
+      "status": "follower lagging behind leader"
+    },
+    {
+      "node": "primary",
+      "label": "read primary #2 (leader reference)",
+      "t_ms": 595.22216796875,
+      "t_end_ms": 603.35400390625,
+      "version": 2,
+      "reference_version": 1,
+      "stale": false,
+      "nodes_consistent": false,
+      "status": "leader has v2; follower still v1"
+    },
+    {
+      "node": "secondary",
+      "label": "read secondary #3 (eventual convergence)",
+      "t_ms": 1192.418212890625,
+      "t_end_ms": 1199.7490234375,
+      "version": 2,
+      "reference_version": 2,
+      "stale": false,
+      "nodes_consistent": true,
+      "status": "all nodes consistent"
+    }
+  ],
+  "summary": {
+    "write_concern": "1 (async)",
+    "write_returned_ms": 37.28,
+    "consistency_model": "Eventual",
+    "stale_read_observed": true,
+    "stale_reads_observed": 2,
+    "consistency_achieved": true,
+    "consistency_window_ms": 1192.4,
+    "replication_delay_ms": 367.2,
+    "secondary_delay_secs": 1,
+    "delay_factor": "secondaryDelaySecs=1 (artificial LAN delay)",
+    "read_observations": [
+      {
+        "at_ms": 242.3,
+        "node": "secondary",
+        "version": "v1",
+        "reference": "v2",
+        "consistent": false
+      },
+      {
+        "at_ms": 244.6,
+        "node": "primary",
+        "version": "v2",
+        "reference": "v1",
+        "consistent": false
+      },
+      {
+        "at_ms": 592.4,
+        "node": "secondary",
+        "version": "v1",
+        "reference": "v2",
+        "consistent": false
+      },
+      {
+        "at_ms": 595.2,
+        "node": "primary",
+        "version": "v2",
+        "reference": "v1",
+        "consistent": false
+      },
+      {
+        "at_ms": 1192.4,
+        "node": "secondary",
+        "version": "v2",
+        "reference": "v2",
+        "consistent": true
+      }
+    ]
+  }
+}

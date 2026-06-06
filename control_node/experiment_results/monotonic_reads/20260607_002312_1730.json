@@ -1,0 +1,243 @@
+{
+  "saved_at": "2026-06-07T00:23:12.174140",
+  "experiment": "monotonic_reads",
+  "title": "Monotonic Reads",
+  "description": "w=1 ile tek write, ardından aynı SECONDARY'den 3 ardışık okuma. Version numarası asla geri gidemez. (DDIA Figure 5-4)",
+  "actors": {
+    "client": {
+      "label": "Client / Dashboard",
+      "color": "#e6edf3",
+      "ip": "(control node)"
+    },
+    "primary": {
+      "label": "PRIMARY",
+      "color": "#3fb950",
+      "ip": "192.168.88.30"
+    },
+    "secondary": {
+      "label": "SECONDARY",
+      "color": "#58a6ff",
+      "ip": "192.168.88.70"
+    }
+  },
+  "actor_order": [
+    "client",
+    "primary",
+    "secondary"
+  ],
+  "events": [
+    {
+      "t_ms": 0,
+      "latency_ms": 9.703369140625,
+      "from": "client",
+      "to": "primary",
+      "label": "write shipment (w=1)",
+      "type": "write",
+      "collection": "shipments",
+      "db_action": "insert",
+      "document_id": "6a248fbf03b9206aaf52af6b",
+      "version": "v1",
+      "data": {
+        "shipment_id": "MON-EXP",
+        "origin_depot": "DEP-IST",
+        "destination_depot": "DEP-ANK",
+        "customer": "MonotonicTest",
+        "weight_kg": 300,
+        "package_count": 3,
+        "status": "in_transit",
+        "assigned_vehicle_id": null
+      }
+    },
+    {
+      "t_ms": 13.24267578125,
+      "latency_ms": 9.703369140625,
+      "from": "primary",
+      "to": "client",
+      "label": "ok v1 (22.9ms)",
+      "type": "ok",
+      "collection": "shipments",
+      "db_action": "write_ack",
+      "document_id": "6a248fbf03b9206aaf52af6b",
+      "version": "v1",
+      "data": {
+        "shipment_id": "MON-EXP",
+        "origin_depot": "DEP-IST",
+        "destination_depot": "DEP-ANK",
+        "customer": "MonotonicTest",
+        "weight_kg": 300,
+        "package_count": 3,
+        "status": "in_transit",
+        "assigned_vehicle_id": null
+      }
+    },
+    {
+      "t_ms": 9.703369140625,
+      "latency_ms": 3.257080078125,
+      "from": "primary",
+      "to": "secondary",
+      "label": "oplog (async)",
+      "type": "replicate",
+      "collection": "shipments",
+      "db_action": "replicate_insert",
+      "document_id": "6a248fbf03b9206aaf52af6b",
+      "version": "v1",
+      "data": {
+        "shipment_id": "MON-EXP",
+        "origin_depot": "DEP-IST",
+        "destination_depot": "DEP-ANK",
+        "customer": "MonotonicTest",
+        "weight_kg": 300,
+        "package_count": 3,
+        "status": "in_transit",
+        "assigned_vehicle_id": null
+      }
+    },
+    {
+      "t_ms": 24.9169921875,
+      "latency_ms": 3.257080078125,
+      "from": "secondary",
+      "to": "primary",
+      "label": "✓ write applied (v1) — 2ms after write",
+      "type": "ack",
+      "collection": "shipments",
+      "db_action": "applied_on_secondary",
+      "document_id": "6a248fbf03b9206aaf52af6b",
+      "version": "v1",
+      "data": {
+        "shipment_id": "MON-EXP",
+        "origin_depot": "DEP-IST",
+        "destination_depot": "DEP-ANK",
+        "customer": "MonotonicTest",
+        "weight_kg": 300,
+        "package_count": 3,
+        "status": "in_transit",
+        "assigned_vehicle_id": null
+      }
+    },
+    {
+      "t_ms": 24.9228515625,
+      "latency_ms": 3.257080078125,
+      "from": "client",
+      "to": "secondary",
+      "label": "read (SECONDARY)",
+      "type": "read",
+      "collection": "shipments",
+      "db_action": "read",
+      "document_id": "6a248fbf03b9206aaf52af6b"
+    },
+    {
+      "t_ms": 28.679931640625,
+      "latency_ms": 3.257080078125,
+      "from": "secondary",
+      "to": "client",
+      "label": "v1 (in_transit) ✓",
+      "type": "fresh_response",
+      "collection": "shipments",
+      "db_action": "read_result",
+      "document_id": "6a248fbf03b9206aaf52af6b",
+      "version": "v1",
+      "data": {
+        "shipment_id": "MON-EXP",
+        "origin_depot": "DEP-IST",
+        "destination_depot": "DEP-ANK",
+        "customer": "MonotonicTest",
+        "weight_kg": 300,
+        "package_count": 3,
+        "status": "in_transit",
+        "assigned_vehicle_id": null
+      }
+    },
+    {
+      "t_ms": 69.50390625,
+      "latency_ms": 3.257080078125,
+      "from": "client",
+      "to": "secondary",
+      "label": "read (SECONDARY)",
+      "type": "read",
+      "collection": "shipments",
+      "db_action": "read",
+      "document_id": "6a248fbf03b9206aaf52af6b"
+    },
+    {
+      "t_ms": 73.260986328125,
+      "latency_ms": 3.257080078125,
+      "from": "secondary",
+      "to": "client",
+      "label": "v1 (in_transit) ✓",
+      "type": "fresh_response",
+      "collection": "shipments",
+      "db_action": "read_result",
+      "document_id": "6a248fbf03b9206aaf52af6b",
+      "version": "v1",
+      "data": {
+        "shipment_id": "MON-EXP",
+        "origin_depot": "DEP-IST",
+        "destination_depot": "DEP-ANK",
+        "customer": "MonotonicTest",
+        "weight_kg": 300,
+        "package_count": 3,
+        "status": "in_transit",
+        "assigned_vehicle_id": null
+      }
+    },
+    {
+      "t_ms": 115.35986328125,
+      "latency_ms": 3.257080078125,
+      "from": "client",
+      "to": "secondary",
+      "label": "read (SECONDARY)",
+      "type": "read",
+      "collection": "shipments",
+      "db_action": "read",
+      "document_id": "6a248fbf03b9206aaf52af6b"
+    },
+    {
+      "t_ms": 119.116943359375,
+      "latency_ms": 3.257080078125,
+      "from": "secondary",
+      "to": "client",
+      "label": "v1 (in_transit) ✓",
+      "type": "fresh_response",
+      "collection": "shipments",
+      "db_action": "read_result",
+      "document_id": "6a248fbf03b9206aaf52af6b",
+      "version": "v1",
+      "data": {
+        "shipment_id": "MON-EXP",
+        "origin_depot": "DEP-IST",
+        "destination_depot": "DEP-ANK",
+        "customer": "MonotonicTest",
+        "weight_kg": 300,
+        "package_count": 3,
+        "status": "in_transit",
+        "assigned_vehicle_id": null
+      }
+    }
+  ],
+  "log": {
+    "log_index": 547,
+    "operation_id": "f8c989f4",
+    "version_before": null,
+    "version_after": 1,
+    "write_concern": "1",
+    "status": "pending_follower",
+    "replication_delay_ms": null,
+    "leader_write_time": "2026-06-06T21:23:11.984000",
+    "follower_visible_time": null,
+    "target_collection": "shipments"
+  },
+  "summary": {
+    "write_concern": "1 (async)",
+    "versions_seen": [
+      1,
+      1,
+      1
+    ],
+    "monotonic": true,
+    "monotonic_violated": false,
+    "replication_delay_ms": 1.97,
+    "consistency_model": "Monotonic Reads",
+    "consistency_achieved": true,
+    "final_version": 1
+  }
+}

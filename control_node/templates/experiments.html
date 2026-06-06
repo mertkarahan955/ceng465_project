@@ -680,6 +680,11 @@ function renderResult(result, fromHistory) {
         <td style="color:var(--muted)">→</td>
         <td><span class="actor-pill actor-${e.to}">${e.to}</span></td>
         <td class="type-${e.type}" style="font-weight:600">${e.type}</td>
+        <td style="font-family:monospace;color:var(--blue)">${escHtml(e.collection || '—')}</td>
+        <td style="font-family:monospace;color:var(--orange)">${escHtml(e.db_action || '—')}</td>
+        <td style="font-family:monospace;color:var(--muted)" title="${escHtml(e.document_id || '')}">${escHtml(shortId(e.document_id))}</td>
+        <td style="font-family:monospace;color:var(--white)">${escHtml(String(e.version || '—'))}</td>
+        <td style="font-family:monospace;color:var(--muted);max-width:460px;white-space:normal;line-height:1.35">${formatEventDataHtml(e)}</td>
         <td>${escHtml(e.label)}</td>
         <td style="color:var(--muted)">${e.latency_ms != null ? e.latency_ms.toFixed(1)+'ms' : '—'}</td>
       </tr>`).join('');
@@ -742,7 +747,8 @@ function renderResult(result, fromHistory) {
             <thead>
               <tr>
                 <th>t (ms)</th><th>From</th><th></th><th>To</th>
-                <th>Type</th><th>Label</th><th>Latency</th>
+                <th>Type</th><th>Collection</th><th>DB op</th><th>Doc</th>
+                <th>Version</th><th>Data / Change</th><th>Label</th><th>Latency</th>
               </tr>
             </thead>
             <tbody>${evTableRows}</tbody>
@@ -1186,6 +1192,74 @@ function interpolateSlot(t, rawTimes, slotX) {
   const x0 = slotX[lo],    x1 = slotX[hi];
   if (t1 === t0) return x0;
   return x0 + (t - t0) / (t1 - t0) * (x1 - x0);
+}
+
+function shortId(id) {
+  if (!id) return '—';
+  const s = String(id);
+  return s.length > 10 ? s.slice(0, 8) + '…' : s;
+}
+
+function formatEventDataHtml(e) {
+  if (e.data_before != null && e.data != null) {
+    return formatChangeHtml(e.data_before, e.data);
+  }
+  if (e.data != null) {
+    return formatObjectHtml(e.data);
+  }
+  if (e.db_action === 'read_result') {
+    return '<span style="color:var(--red)">not found / not visible</span>';
+  }
+  return '<span style="color:var(--muted)">—</span>';
+}
+
+function formatChangeHtml(before, after) {
+  const keys = preferredDataKeys(before, after);
+  const changed = keys.filter(k => before?.[k] !== after?.[k]);
+  const shown = (changed.length ? changed : keys).slice(0, 5);
+  if (shown.length === 0) return '<span style="color:var(--muted)">no field change</span>';
+
+  return shown.map(k => {
+    const oldVal = fmtValue(before?.[k]);
+    const newVal = fmtValue(after?.[k]);
+    return `<span style="white-space:nowrap"><strong style="color:var(--white)">${escHtml(k)}</strong>: ${escHtml(oldVal)} <span style="color:var(--orange)">→</span> <span style="color:var(--green)">${escHtml(newVal)}</span></span>`;
+  }).join('<br>');
+}
+
+function formatObjectHtml(obj) {
+  const keys = preferredDataKeys(obj).slice(0, 6);
+  if (keys.length === 0) return '<span style="color:var(--muted)">empty</span>';
+  return keys.map(k =>
+    `<span style="white-space:nowrap"><strong style="color:var(--white)">${escHtml(k)}</strong>=${escHtml(fmtValue(obj[k]))}</span>`
+  ).join(' · ');
+}
+
+function preferredDataKeys(...objs) {
+  const preferred = [
+    'vehicle_id', 'shipment_id', 'incident_type', 'severity',
+    'city', 'district', 'status', 'speed_kmh', 'lat', 'lng',
+    'origin_depot', 'destination_depot', 'customer',
+  ];
+  const seen = new Set();
+  const allKeys = [];
+  objs.filter(Boolean).forEach(obj => Object.keys(obj).forEach(k => {
+    if (!seen.has(k)) {
+      seen.add(k);
+      allKeys.push(k);
+    }
+  }));
+  return [
+    ...preferred.filter(k => seen.has(k)),
+    ...allKeys.filter(k => !preferred.includes(k)),
+  ];
+}
+
+function fmtValue(value) {
+  if (value == null) return '—';
+  if (typeof value === 'number') return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(4)));
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
 }
 
 /* ── Escape helpers ───────────────────────────────────────────── */

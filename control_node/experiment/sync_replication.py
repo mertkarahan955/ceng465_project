@@ -30,6 +30,15 @@ def run_sync_replication():
     net_p = measure_net_one_way(db.get_primary,   config.PRIMARY_NODE_SERVER_URL)
     net_s = measure_net_one_way(db.get_secondary, config.SECONDARY_NODE_SERVER_URL)
 
+    position_value = {
+        "vehicle_id": "SYNC-EXP",
+        "lat": 41.0082,
+        "lng": 28.9784,
+        "city": "Istanbul",
+        "district": "Besiktas",
+        "speed_kmh": 65,
+    }
+
     t0 = ms()
     item_id, delay_ms = operations.insert_position(
         "SYNC-EXP", 41.0082, 28.9784, "Istanbul", "Besiktas", 65
@@ -59,15 +68,33 @@ def run_sync_replication():
             "client", "primary",
             "write (w=majority)", "write",
             f"ok ({d:.1f} ms)", "ok",
+            req_meta={
+                "collection": "positions",
+                "db_action": "insert",
+                "document_id": str(item_id),
+                "version": "v1",
+                "data": position_value,
+            },
+            resp_meta={
+                "collection": "positions",
+                "db_action": "write_ack",
+                "document_id": str(item_id),
+                "version": "v1",
+                "data": position_value,
+            },
         ),
         # Oplog: primary → secondary  (arrives quickly, secondary processes)
         {"t_ms": oplog_start, "latency_ms": safe_lat(sec_arrive - oplog_start),
          "from": "primary", "to": "secondary",
-         "label": "oplog → apply", "type": "replicate"},
+         "label": "oplog → apply", "type": "replicate",
+         "collection": "positions", "db_action": "replicate_insert",
+         "document_id": str(item_id), "version": "v1", "data": position_value},
         # ACK: secondary → primary  (pairs with oplog → span on secondary lane)
         {"t_ms": sec_ack_t, "latency_ms": safe_lat(ok_depart - sec_ack_t),
          "from": "secondary", "to": "primary",
-         "label": "ACK ✓", "type": "ack"},
+         "label": "ACK ✓", "type": "ack",
+         "collection": "positions", "db_action": "applied_on_secondary",
+         "document_id": str(item_id), "version": "v1", "data": position_value},
     ]
 
     return {

@@ -1,0 +1,136 @@
+{
+  "saved_at": "2026-06-07T00:06:51.939908",
+  "experiment": "monotonic_reads",
+  "title": "Monotonic Reads",
+  "description": "w=1 ile tek write, ardından aynı SECONDARY'den 3 ardışık okuma. Version numarası asla geri gidemez. (DDIA Figure 5-4)",
+  "actors": {
+    "client": {
+      "label": "Client / Dashboard",
+      "color": "#e6edf3",
+      "ip": "(control node)"
+    },
+    "primary": {
+      "label": "PRIMARY",
+      "color": "#3fb950",
+      "ip": "192.168.88.30"
+    },
+    "secondary": {
+      "label": "SECONDARY",
+      "color": "#58a6ff",
+      "ip": "192.168.88.70"
+    }
+  },
+  "actor_order": [
+    "client",
+    "primary",
+    "secondary"
+  ],
+  "events": [
+    {
+      "t_ms": 0,
+      "latency_ms": 8.9000244140625,
+      "from": "client",
+      "to": "primary",
+      "label": "write shipment (w=1)",
+      "type": "write"
+    },
+    {
+      "t_ms": 15.0667724609375,
+      "latency_ms": 8.9000244140625,
+      "from": "primary",
+      "to": "client",
+      "label": "ok v1 (24.0ms)",
+      "type": "ok"
+    },
+    {
+      "t_ms": 8.9000244140625,
+      "latency_ms": 2.0455322265625,
+      "from": "primary",
+      "to": "secondary",
+      "label": "oplog (async)",
+      "type": "replicate"
+    },
+    {
+      "t_ms": 24.828857421875,
+      "latency_ms": 2.0455322265625,
+      "from": "secondary",
+      "to": "primary",
+      "label": "✓ write applied (v1) — 1ms after write",
+      "type": "ack"
+    },
+    {
+      "t_ms": 24.83203125,
+      "latency_ms": 2.0455322265625,
+      "from": "client",
+      "to": "secondary",
+      "label": "read (SECONDARY)",
+      "type": "read"
+    },
+    {
+      "t_ms": 27.3775634765625,
+      "latency_ms": 2.0455322265625,
+      "from": "secondary",
+      "to": "client",
+      "label": "v1 (in_transit) ✓",
+      "type": "fresh_response"
+    },
+    {
+      "t_ms": 69.306884765625,
+      "latency_ms": 2.0455322265625,
+      "from": "client",
+      "to": "secondary",
+      "label": "read (SECONDARY)",
+      "type": "read"
+    },
+    {
+      "t_ms": 71.8524169921875,
+      "latency_ms": 2.0455322265625,
+      "from": "secondary",
+      "to": "client",
+      "label": "v1 (in_transit) ✓",
+      "type": "fresh_response"
+    },
+    {
+      "t_ms": 115.46484375,
+      "latency_ms": 2.0455322265625,
+      "from": "client",
+      "to": "secondary",
+      "label": "read (SECONDARY)",
+      "type": "read"
+    },
+    {
+      "t_ms": 118.0103759765625,
+      "latency_ms": 2.0455322265625,
+      "from": "secondary",
+      "to": "client",
+      "label": "v1 (in_transit) ✓",
+      "type": "fresh_response"
+    }
+  ],
+  "log": {
+    "log_index": 529,
+    "operation_id": "40ff42ab",
+    "version_before": null,
+    "version_after": 1,
+    "write_concern": "1",
+    "status": "pending_follower",
+    "replication_delay_ms": null,
+    "leader_write_time": "2026-06-06T21:06:51.767000",
+    "follower_visible_time": null,
+    "target_collection": "shipments"
+  },
+  "summary": {
+    "write_concern": "1 (async)",
+    "versions_seen": [
+      1,
+      1,
+      1
+    ],
+    "monotonic": true,
+    "monotonic_violated": false,
+    "replication_delay_ms": 0.86,
+    "consistency_model": "Monotonic Reads",
+    "consistency_achieved": true,
+    "final_version": 1
+  }
+}

@@ -28,6 +28,17 @@ def run_monotonic_reads():
     net_p = measure_net_one_way(db.get_primary,   config.PRIMARY_NODE_SERVER_URL)
     net_s = measure_net_one_way(db.get_secondary, config.SECONDARY_NODE_SERVER_URL)
 
+    shipment_value = {
+        "shipment_id": "MON-EXP",
+        "origin_depot": "DEP-IST",
+        "destination_depot": "DEP-ANK",
+        "customer": "MonotonicTest",
+        "weight_kg": 300,
+        "package_count": 3,
+        "status": "in_transit",
+        "assigned_vehicle_id": None,
+    }
+
     with write_concern(1):
         t0 = ms()
 
@@ -58,6 +69,7 @@ def run_monotonic_reads():
                 "t_end_ms": t_r2,
                 "version":  doc.get("version") if doc else 0,
                 "status":   doc.get("value", {}).get("status", "—") if doc else "not synced",
+                "data":     doc.get("value") if doc else None,
             })
             time.sleep(0.04)
 
@@ -76,18 +88,36 @@ def run_monotonic_reads():
             "client", "primary",
             "write shipment (w=1)", "write",
             f"ok v1 ({t_w1:.1f}ms)", "ok",
+            req_meta={
+                "collection": "shipments",
+                "db_action": "insert",
+                "document_id": str(shp_id),
+                "version": "v1",
+                "data": shipment_value,
+            },
+            resp_meta={
+                "collection": "shipments",
+                "db_action": "write_ack",
+                "document_id": str(shp_id),
+                "version": "v1",
+                "data": shipment_value,
+            },
         ),
         # Oplog: departs from primary after commit; lands at secondary quickly
         {"t_ms": safe_lat(net_p),
          "latency_ms": safe_lat(net_s),
          "from": "primary", "to": "secondary",
-         "label": "oplog (async)", "type": "replicate"},
+         "label": "oplog (async)", "type": "replicate",
+         "collection": "shipments", "db_action": "replicate_insert",
+         "document_id": str(shp_id), "version": "v1", "data": shipment_value},
         # Ack: secondary finishes applying v1 — pairs with oplog for span line
         {"t_ms": secondary_applied_ms,
          "latency_ms": safe_lat(net_s),
          "from": "secondary", "to": "primary",
          "label": f"✓ write applied (v1) — {total_repl_ms:.0f}ms after write",
-         "type": "ack"},
+         "type": "ack",
+         "collection": "shipments", "db_action": "applied_on_secondary",
+         "document_id": str(shp_id), "version": "v1", "data": shipment_value},
     ]
 
     prev_v = None
@@ -105,6 +135,18 @@ def run_monotonic_reads():
             "client", "secondary",
             "read (SECONDARY)", "read",
             resp_label, resp_type,
+            req_meta={
+                "collection": "shipments",
+                "db_action": "read",
+                "document_id": str(shp_id),
+            },
+            resp_meta={
+                "collection": "shipments",
+                "db_action": "read_result",
+                "document_id": str(shp_id),
+                "version": f"v{v}" if v else "not visible on secondary",
+                "data": r["data"],
+            },
         ))
 
     repl_ms = repl_ms_actual or (log.get("replication_delay_ms") if log else None)

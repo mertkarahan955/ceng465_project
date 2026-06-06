@@ -81,6 +81,14 @@ def run_eventual_consistency():
     item_id, _ = operations.insert_position(
         "EC-BASE", 39.9334, 32.8597, "Ankara", "Cankaya", 80
     )
+    position_v1 = {
+        "vehicle_id": "EC-BASE",
+        "lat": 39.9334,
+        "lng": 32.8597,
+        "city": "Ankara",
+        "district": "Cankaya",
+        "speed_kmh": 80,
+    }
     # Wait for secondary to have v1 before setting the artificial delay.
     for _ in range(200):
         sec = db.get_secondary()["positions"].find_one({"_id": item_id})
@@ -93,14 +101,17 @@ def run_eventual_consistency():
 
     # ── Phase 3: w=1 update → v2 (ok returns without waiting for secondary) ───
     t0 = ms()
+    position_v2 = {
+        "vehicle_id": "EC-BASE",
+        "lat": 41.0082,
+        "lng": 28.9784,
+        "city": "Istanbul",
+        "district": "Besiktas",
+        "speed_kmh": 90,
+    }
     operations.set_write_concern(1)
     write_start_ms = ms() - t0
-    operations.update_item(item_id, {
-        "vehicle_id": "EC-BASE",
-        "lat": 41.0082, "lng": 28.9784,
-        "city": "Istanbul", "district": "Besiktas",
-        "speed_kmh": 90,
-    }, collection="positions")
+    operations.update_item(item_id, position_v2, collection="positions")
     write_returned_ms = ms() - t0
     operations.set_write_concern("majority")
 
@@ -136,6 +147,7 @@ def run_eventual_consistency():
             "t_end_ms":         t_end,
             "version":          version,
             "reference_version": latest_primary_version,
+            "data":             doc.get("value") if doc else None,
             "stale":            stale,
             "nodes_consistent": not stale,
             "status":           "follower lagging behind leader" if stale else "all nodes consistent",
@@ -158,6 +170,7 @@ def run_eventual_consistency():
             "t_end_ms":         t_end,
             "version":          version,
             "reference_version": last_secondary_version,
+            "data":             doc.get("value") if doc else None,
             "stale":            False,
             "nodes_consistent": not inconsistent_with_secondary,
             "status": (
@@ -222,20 +235,40 @@ def run_eventual_consistency():
             "client", "primary",
             "write v2 (w=1)", "write",
             f"ok ({update_duration:.1f}ms) — no secondary wait", "ok",
+            req_meta={
+                "collection": "positions",
+                "db_action": "update",
+                "document_id": str(item_id),
+                "version": "v1 → v2",
+                "data_before": position_v1,
+                "data": position_v2,
+            },
+            resp_meta={
+                "collection": "positions",
+                "db_action": "write_ack",
+                "document_id": str(item_id),
+                "version": "v2",
+                "data": position_v2,
+            },
         ),
 
         # 2. Oplog network hop (fast); secondary applies later (span line shows delay)
         {"t_ms": primary_commit_ms,
          "latency_ms": safe_lat(net_s),
          "from": "primary", "to": "secondary",
-         "label": "oplog async", "type": "replicate"},
+         "label": "oplog async", "type": "replicate",
+         "collection": "positions", "db_action": "replicate_update",
+         "document_id": str(item_id), "version": "v1 → v2",
+         "data_before": position_v1, "data": position_v2},
 
         # 3. Ack when secondary finally has v2 — closes the inconsistency window
         {"t_ms": secondary_applied_ms,
          "latency_ms": safe_lat(net_s),
          "from": "secondary", "to": "primary",
          "label": f"✓ consistent (v2) — {total_repl_ms:.0f}ms after write",
-         "type": "ack"},
+         "type": "ack",
+         "collection": "positions", "db_action": "applied_on_secondary",
+         "document_id": str(item_id), "version": "v2", "data": position_v2},
     ]
 
     # 4. Observation reads in the exact sequence shown to the user.
@@ -252,6 +285,18 @@ def run_eventual_consistency():
                 r["label"], "read",
                 resp_label,
                 "stale_response" if r["stale"] else "fresh_response",
+                req_meta={
+                    "collection": "positions",
+                    "db_action": "read",
+                    "document_id": str(item_id),
+                },
+                resp_meta={
+                    "collection": "positions",
+                    "db_action": "read_result",
+                    "document_id": str(item_id),
+                    "version": f"v{r['version']}" if r["version"] else "not found",
+                    "data": r["data"],
+                },
             ))
             continue
 
@@ -265,6 +310,18 @@ def run_eventual_consistency():
             "client", "primary",
             r["label"], "read",
             resp_label, "fresh_response",
+            req_meta={
+                "collection": "positions",
+                "db_action": "read",
+                "document_id": str(item_id),
+            },
+            resp_meta={
+                "collection": "positions",
+                "db_action": "read_result",
+                "document_id": str(item_id),
+                "version": f"v{r['version']}" if r["version"] else "not found",
+                "data": r["data"],
+            },
         ))
 
     return {
