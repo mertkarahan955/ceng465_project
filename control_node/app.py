@@ -339,7 +339,7 @@ def api_run_experiment():
 @app.route("/api/experiment/results")
 def api_experiment_results_all():
     """List saved results for all experiment types."""
-    names = ["sync_replication", "eventual_consistency", "read_after_write", "monotonic_reads"]
+    names = ["sync_replication", "eventual_consistency", "read_after_write", "monotonic_reads", "concurrent_writes"]
     data = {n: experiment_runner.list_results(n) for n in names}
     return jsonify({"ok": True, "results": data})
 

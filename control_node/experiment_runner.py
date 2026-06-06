@@ -11,6 +11,7 @@ import os
 from datetime import datetime
 
 from experiment import (
+    run_concurrent_writes,
     run_eventual_consistency,
     run_monotonic_reads,
     run_read_after_write,
@@ -78,6 +79,7 @@ def run_experiment(name):
         "eventual_consistency": run_eventual_consistency,
         "read_after_write":     run_read_after_write,
         "monotonic_reads":      run_monotonic_reads,
+        "concurrent_writes":    run_concurrent_writes,
     }
     fn = registry.get(name)
     if not fn:
