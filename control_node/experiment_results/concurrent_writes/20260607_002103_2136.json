@@ -1,0 +1,255 @@
+{
+  "saved_at": "2026-06-07T00:21:03.214026",
+  "experiment": "concurrent_writes",
+  "title": "Concurrent Writes — Propagation Order",
+  "description": "5 rapid w=1 writes to PRIMARY, then follower snapshot. Order must be preserved even under async replication. w=majority comparison shows the ordering guarantee cost.",
+  "actors": {
+    "client": {
+      "label": "Client / Dashboard",
+      "color": "#e6edf3",
+      "ip": "(control node)"
+    },
+    "primary": {
+      "label": "PRIMARY",
+      "color": "#3fb950",
+      "ip": "192.168.88.30"
+    },
+    "secondary": {
+      "label": "SECONDARY",
+      "color": "#58a6ff",
+      "ip": "192.168.88.70"
+    }
+  },
+  "actor_order": [
+    "client",
+    "primary",
+    "secondary"
+  ],
+  "events": [
+    {
+      "t_ms": 0.0048828125,
+      "latency_ms": 0.9620361328125,
+      "from": "client",
+      "to": "primary",
+      "label": "write v1 (w=1)",
+      "type": "write"
+    },
+    {
+      "t_ms": 15.7059326171875,
+      "latency_ms": 0.9620361328125,
+      "from": "primary",
+      "to": "client",
+      "label": "ok — seq 1",
+      "type": "ok"
+    },
+    {
+      "t_ms": 16.76904296875,
+      "latency_ms": 0.9620361328125,
+      "from": "client",
+      "to": "primary",
+      "label": "write v2 (w=1)",
+      "type": "write"
+    },
+    {
+      "t_ms": 23.9859619140625,
+      "latency_ms": 0.9620361328125,
+      "from": "primary",
+      "to": "client",
+      "label": "ok — seq 2",
+      "type": "ok"
+    },
+    {
+      "t_ms": 24.951171875,
+      "latency_ms": 0.9620361328125,
+      "from": "client",
+      "to": "primary",
+      "label": "write v3 (w=1)",
+      "type": "write"
+    },
+    {
+      "t_ms": 30.4908447265625,
+      "latency_ms": 0.9620361328125,
+      "from": "primary",
+      "to": "client",
+      "label": "ok — seq 3",
+      "type": "ok"
+    },
+    {
+      "t_ms": 31.4560546875,
+      "latency_ms": 0.9620361328125,
+      "from": "client",
+      "to": "primary",
+      "label": "write v4 (w=1)",
+      "type": "write"
+    },
+    {
+      "t_ms": 36.4149169921875,
+      "latency_ms": 0.9620361328125,
+      "from": "primary",
+      "to": "client",
+      "label": "ok — seq 4",
+      "type": "ok"
+    },
+    {
+      "t_ms": 37.379150390625,
+      "latency_ms": 0.9620361328125,
+      "from": "client",
+      "to": "primary",
+      "label": "write v5 (w=1)",
+      "type": "write"
+    },
+    {
+      "t_ms": 42.3270263671875,
+      "latency_ms": 0.9620361328125,
+      "from": "primary",
+      "to": "client",
+      "label": "ok — seq 5",
+      "type": "ok"
+    },
+    {
+      "t_ms": 0.9620361328125,
+      "latency_ms": 8.661865234375,
+      "from": "primary",
+      "to": "secondary",
+      "label": "oplog batch (w1→w5, async, ~131.8ms)",
+      "type": "replicate"
+    },
+    {
+      "t_ms": 355.184814453125,
+      "latency_ms": 8.661865234375,
+      "from": "secondary",
+      "to": "primary",
+      "label": "all 5 writes applied — 132ms after burst",
+      "type": "ack"
+    },
+    {
+      "t_ms": 43.302001953125,
+      "latency_ms": 8.661865234375,
+      "from": "client",
+      "to": "secondary",
+      "label": "snapshot read (immediately after burst)",
+      "type": "read"
+    },
+    {
+      "t_ms": 80.787109375,
+      "latency_ms": 8.661865234375,
+      "from": "secondary",
+      "to": "client",
+      "label": "0/5 visible ⚡ some missing",
+      "type": "stale_response"
+    },
+    {
+      "t_ms": 89.469970703125,
+      "latency_ms": 0.9620361328125,
+      "from": "client",
+      "to": "primary",
+      "label": "write (w=majority) — sync",
+      "type": "write"
+    },
+    {
+      "t_ms": 222.4139404296875,
+      "latency_ms": 0.9620361328125,
+      "from": "primary",
+      "to": "client",
+      "label": "ok — 133.9ms (blocked for ACK)",
+      "type": "ok"
+    },
+    {
+      "t_ms": 355.18896484375,
+      "latency_ms": 8.661865234375,
+      "from": "client",
+      "to": "secondary",
+      "label": "final read — order check (6 docs)",
+      "type": "read"
+    },
+    {
+      "t_ms": 395.52490234375,
+      "latency_ms": 8.661865234375,
+      "from": "secondary",
+      "to": "client",
+      "label": "✓ order preserved (log_index ascending)",
+      "type": "fresh_response"
+    }
+  ],
+  "log": {
+    "log_index": 541,
+    "operation_id": "6f683e31",
+    "version_before": null,
+    "version_after": 1,
+    "write_concern": "majority",
+    "status": "visible_on_follower",
+    "replication_delay_ms": 117.49,
+    "leader_write_time": "2026-06-06T21:21:02.906000",
+    "follower_visible_time": "2026-06-06T21:21:03.023000",
+    "target_collection": "vehicles"
+  },
+  "reads": [
+    {
+      "seq": 1,
+      "vid": "CW-01",
+      "visible": false,
+      "version": null,
+      "t_ms": 43.302001953125,
+      "t_end_ms": 89.448974609375,
+      "status": "not yet synced"
+    },
+    {
+      "seq": 2,
+      "vid": "CW-02",
+      "visible": false,
+      "version": null,
+      "t_ms": 43.302001953125,
+      "t_end_ms": 89.448974609375,
+      "status": "not yet synced"
+    },
+    {
+      "seq": 3,
+      "vid": "CW-03",
+      "visible": false,
+      "version": null,
+      "t_ms": 43.302001953125,
+      "t_end_ms": 89.448974609375,
+      "status": "not yet synced"
+    },
+    {
+      "seq": 4,
+      "vid": "CW-04",
+      "visible": false,
+      "version": null,
+      "t_ms": 43.302001953125,
+      "t_end_ms": 89.448974609375,
+      "status": "not yet synced"
+    },
+    {
+      "seq": 5,
+      "vid": "CW-05",
+      "visible": false,
+      "version": null,
+      "t_ms": 43.302001953125,
+      "t_end_ms": 89.448974609375,
+      "status": "not yet synced"
+    }
+  ],
+  "summary": {
+    "write_concern_burst": "1 (async)",
+    "write_concern_comparison": "majority (sync)",
+    "writes_sent": 5,
+    "visible_immediately": 0,
+    "visible_pct": 0,
+    "w1_write_ms": 8.66,
+    "wmajority_write_ms": 133.91,
+    "replication_delay_ms": 131.8,
+    "order_preserved": true,
+    "order_violated": false,
+    "log_index_sequence": [
+      536,
+      537,
+      538,
+      539,
+      540,
+      541
+    ],
+    "consistency_model": "Concurrent Writes",
+    "consistency_achieved": true
+  }
+}

@@ -433,6 +433,17 @@ details summary:hover { color: var(--text); }
       </button>
     </div>
 
+    <!-- 5. Concurrent Writes -->
+    <div class="exp-card" id="card-concurrent_writes" onclick="selectExperiment('concurrent_writes')">
+      <div class="exp-card-title">⑤ Concurrent Writes</div>
+      <div class="exp-card-desc">User A + User B eş zamanlı w=1 yazar → PRIMARY sıralar → SECONDARY aynı sırayla uygular</div>
+      <span class="exp-badge badge-async">2 users · order check</span>
+      <button class="run-btn" id="btn-concurrent_writes"
+              onclick="event.stopPropagation(); runExperiment('concurrent_writes')">
+        ▶ Run
+      </button>
+    </div>
+
     <!-- ── History ──────────────────────────────────────────── -->
     <hr class="history-divider">
     <div class="section-label" style="display:flex;align-items:center;gap:6px;">
@@ -487,6 +498,7 @@ const EXP_TAG = {
   eventual_consistency:{ cls: 'tag-async', label: 'EC'   },
   read_after_write:    { cls: 'tag-raw',   label: 'RAW'  },
   monotonic_reads:     { cls: 'tag-mono',  label: 'MONO' },
+  concurrent_writes:   { cls: 'tag-async', label: 'CW'   },
 };
 
 let currentExperiment = null;
@@ -653,12 +665,34 @@ function renderResult(result, fromHistory) {
     }
   } else if (summary.monotonic_violated !== undefined) {
     if (summary.monotonic_violated) {
+      const bk = (summary.backward_reads || [])
+        .map(b => `v${b.from_version}→v${b.to_version} @ read #${b.read_index}`)
+        .join(', ');
       verdictClass = 'verdict-fail';
-      verdictText  = '✗ MONOTONIC VIOLATED — version went backwards on SECONDARY';
+      verdictText  = '✗ MONOTONIC VIOLATED — version went backwards on SECONDARY'
+        + (bk ? ': ' + bk : '');
     } else {
+      const written = (summary.versions_written || []).map(v => 'v' + v).join('→');
+      const seen    = (summary.versions_seen    || []).map(v => 'v' + v).join('→');
       verdictClass = 'verdict-ok';
-      verdictText  = '✓ MONOTONIC HOLDS — SECONDARY versions never went backwards (' +
-        (summary.versions_seen || []).map(v => 'v' + v).join(' → ') + ')';
+      verdictText  = '✓ MONOTONIC HOLDS — written ' + written
+        + ' · secondary saw ' + seen + ' (never backwards)';
+    }
+  } else if (summary.order_violated !== undefined) {
+    if (summary.order_violated) {
+      verdictClass = 'verdict-fail';
+      verdictText  = '⚡ ORDER VIOLATED — follower saw writes out of sequence: '
+        + (summary.log_index_sequence || []).join(' → ');
+    } else {
+      const pct   = summary.visible_pct   != null ? summary.visible_pct + '%' : '?';
+      const total = summary.total_writes  != null ? summary.total_writes : '?';
+      const vis   = summary.visible_immediately != null ? summary.visible_immediately : '?';
+      const avgA  = summary.avg_write_ms_user_a != null ? summary.avg_write_ms_user_a.toFixed(1) + 'ms' : '?';
+      const avgB  = summary.avg_write_ms_user_b != null ? summary.avg_write_ms_user_b.toFixed(1) + 'ms' : '?';
+      verdictClass = (summary.visible_immediately < summary.total_writes) ? 'verdict-partial' : 'verdict-ok';
+      verdictText  = `✓ ORDER PRESERVED — PRIMARY serialised all writes; SECONDARY applied in log_index order. `
+        + `Immediately visible: ${vis}/${total} (${pct}). `
+        + `Avg write: User A ${avgA} · User B ${avgB}.`;
     }
   } else if (stale && achieved) {
     verdictClass = 'verdict-partial';
@@ -771,17 +805,18 @@ function buildStatRows(s) {
        <div class="stat-value ${cls}">${value}</div>
      </div>`;
 
-  if (s.write_returned_ms    != null) rows.push(stat('Write returned',      s.write_returned_ms.toFixed(1)    + ' ms', 'blue'));
-  if (s.replication_delay_ms != null) rows.push(stat('Repl. delay',         s.replication_delay_ms.toFixed(1) + ' ms', 'orange'));
-  if (s.raw_read_ms          != null) rows.push(stat('PRIMARY read (RAW)',  s.raw_read_ms.toFixed(1)          + ' ms', 'green'));
-  if (s.consistency_window_ms!= null) rows.push(stat('Consistency window',  s.consistency_window_ms.toFixed(1)+ ' ms', 'orange'));
-  if (s.version_after        != null) rows.push(stat('Version after',       'v' + s.version_after,                     'white'));
-  if (s.final_version        != null) rows.push(stat('Final version',       'v' + s.final_version,                     'white'));
+  if (s.write_returned_ms  != null) rows.push(stat('Write returned',    s.write_returned_ms.toFixed(1)  + ' ms', 'blue'));
+  // RAW uses "Follower sync time" label; all other experiments use "Repl. delay"
+  if (s.follower_sync_ms   != null) rows.push(stat('Follower sync time', s.follower_sync_ms.toFixed(1)   + ' ms', 'orange'));
+  else if (s.replication_delay_ms != null) rows.push(stat('Repl. delay', s.replication_delay_ms.toFixed(1) + ' ms', 'orange'));
+  if (s.raw_read_ms        != null) rows.push(stat('Leader read (RAW)',   s.raw_read_ms.toFixed(1)        + ' ms', 'green'));
+  if (s.consistency_window_ms != null) rows.push(stat('Consistency window',    s.consistency_window_ms.toFixed(1) + ' ms', 'orange'));
+  if (s.version_after         != null) rows.push(stat('Version after',         'v' + s.version_after,                      'white'));
 
+  // RAW observations
   if (s.stale_read_observed != null)
-    rows.push(stat('Secondary read', s.stale_read_observed ? 'STALE ⚡ (anomaly)' : 'FRESH ✓ (fast)',
+    rows.push(stat('Follower read', s.stale_read_observed ? 'STALE ⚡ (anomaly)' : 'FRESH ✓ (fast)',
                    s.stale_read_observed ? 'red' : 'green'));
-
   if (s.stale_reads_observed != null)
     rows.push(stat('Stale observations', String(s.stale_reads_observed),
                    s.stale_reads_observed > 0 ? 'red' : 'green'));
@@ -790,16 +825,31 @@ function buildStatRows(s) {
     rows.push(stat('Delay factor', s.secondary_delay_secs + 's secondary delay', 'orange'));
 
   if (s.raw_fresh != null)
-    rows.push(stat('PRIMARY read (RAW)', s.raw_fresh ? 'FRESH ✓ (always)' : 'STALE ⚡',
+    rows.push(stat('Leader read (RAW)', s.raw_fresh ? 'FRESH ✓ (always)' : 'STALE ⚡',
                    s.raw_fresh ? 'green' : 'red'));
 
+  // Monotonic Reads observations
+  if (s.versions_written && s.versions_written.length)
+    rows.push(stat('Versions written', s.versions_written.map(v => 'v' + v).join('→'), 'blue'));
   if (s.versions_seen && s.versions_seen.length)
-    rows.push(stat('Versions seen', s.versions_seen.map(v => 'v' + v).join(' → '), 'purple'));
+    rows.push(stat('Versions seen', s.versions_seen.map(v => 'v' + v).join('→'), 'purple'));
   if (s.final_version != null)
     rows.push(stat('Final version', 'v' + s.final_version, 'white'));
+  if (s.backward_count != null)
+    rows.push(stat('Backward reads', s.backward_count === 0 ? '0 ✓ (none observed)' : s.backward_count + ' ✗',
+                   s.backward_count === 0 ? 'green' : 'red'));
   if (s.monotonic_violated != null)
     rows.push(stat('Monotonic', s.monotonic_violated ? 'VIOLATED ✗' : 'HOLDS ✓',
                    s.monotonic_violated ? 'red' : 'green'));
+
+  // Concurrent Writes observations
+  if (s.total_writes        != null) rows.push(stat('Total writes',        s.total_writes + ' (2 users × ' + s.writes_per_user + ')', 'blue'));
+  if (s.visible_immediately != null) rows.push(stat('Visible immediately', s.visible_immediately + '/' + s.total_writes + ' (' + s.visible_pct + '%)',
+                                                     s.visible_immediately === s.total_writes ? 'green' : 'orange'));
+  if (s.avg_write_ms_user_a != null) rows.push(stat('Avg write User A',   s.avg_write_ms_user_a.toFixed(1) + ' ms', 'blue'));
+  if (s.avg_write_ms_user_b != null) rows.push(stat('Avg write User B',   s.avg_write_ms_user_b.toFixed(1) + ' ms', 'orange'));
+  if (s.order_violated      != null) rows.push(stat('Write order',        s.order_violated ? 'VIOLATED ⚡' : 'PRESERVED ✓',
+                                                     s.order_violated ? 'red' : 'green'));
 
   return rows.join('');
 }
