@@ -1006,16 +1006,6 @@ function drawTimeline(containerId, events, actorsCfg, actorOrder) {
             text-anchor="${anchor}" font-family="monospace" font-weight="600"
             >${escSvg(e.label)}</text>`;
 
-    // Stale box
-    if (e.type === 'stale_response') {
-      const bw = Math.max(e.label.length * 5.5 + 12, 80);
-      const bx = goingDown ? x2 : x2 - bw + 4;
-      body += `
-        <rect x="${bx - 4}" y="${y2 - 10}" width="${bw}" height="20"
-              fill="rgba(248,81,73,.08)" stroke="#f85149" stroke-width="1"
-              stroke-dasharray="3,2" rx="3"/>`;
-    }
-
     // Axis tick for send point
     body += `
       <line x1="${x1}" y1="${axisY}" x2="${x1}" y2="${axisY - 3}"
