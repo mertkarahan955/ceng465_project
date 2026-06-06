@@ -336,6 +336,38 @@ def api_run_experiment():
         return jsonify({"ok": False, "error": str(e), "trace": traceback.format_exc()}), 500
 
 
+@app.route("/api/experiment/results")
+def api_experiment_results_all():
+    """List saved results for all experiment types."""
+    names = ["sync_replication", "eventual_consistency", "read_after_write", "monotonic_reads"]
+    data = {n: experiment_runner.list_results(n) for n in names}
+    return jsonify({"ok": True, "results": data})
+
+
+@app.route("/api/experiment/results/<name>")
+def api_experiment_results(name):
+    """List saved results for a specific experiment."""
+    try:
+        results = experiment_runner.list_results(name)
+        return jsonify({"ok": True, "results": results})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/experiment/results/<name>/<filename>")
+def api_experiment_result_file(name, filename):
+    """Load a specific saved experiment result."""
+    if ".." in filename or "/" in filename:
+        return jsonify({"ok": False, "error": "Invalid filename"}), 400
+    try:
+        data = experiment_runner.load_result(name, filename)
+        return jsonify({"ok": True, "result": data})
+    except FileNotFoundError:
+        return jsonify({"ok": False, "error": "Not found"}), 404
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":

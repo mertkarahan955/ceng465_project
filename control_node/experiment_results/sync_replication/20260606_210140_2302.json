@@ -1,0 +1,61 @@
+{
+  "saved_at": "2026-06-06T21:01:40.231209",
+  "experiment": "sync_replication",
+  "title": "Synchronous Replication (w=majority)",
+  "description": "Primary, follower ACK'ini bekler. İstemci ancak secondary onayladıktan sonra 'ok' alır. Daha güvenli ama daha yavaş.",
+  "events": [
+    {
+      "t_ms": 0,
+      "latency_ms": 3.0,
+      "from": "client",
+      "to": "primary",
+      "label": "write (w=majority)",
+      "type": "write"
+    },
+    {
+      "t_ms": 9.23,
+      "latency_ms": 55.379999999999995,
+      "from": "primary",
+      "to": "secondary",
+      "label": "oplog → apply",
+      "type": "replicate"
+    },
+    {
+      "t_ms": 71.994,
+      "latency_ms": 20.305999999999997,
+      "from": "secondary",
+      "to": "primary",
+      "label": "ACK ✓",
+      "type": "ack"
+    },
+    {
+      "t_ms": 92.3,
+      "latency_ms": 3.0,
+      "from": "primary",
+      "to": "client",
+      "label": "ok (92.3 ms)",
+      "type": "ok"
+    }
+  ],
+  "log": {
+    "log_index": 100,
+    "operation_id": "0ed06e45",
+    "version_before": null,
+    "version_after": 1,
+    "write_concern": "majority",
+    "status": "visible_on_follower",
+    "replication_delay_ms": 92.3,
+    "leader_write_time": "2026-06-06T18:01:40.110000",
+    "follower_visible_time": "2026-06-06T18:01:40.203000",
+    "target_collection": "positions"
+  },
+  "summary": {
+    "write_concern": "majority",
+    "write_returned_ms": 92.3,
+    "replication_delay_ms": 92.3,
+    "consistency_model": "Synchronous",
+    "version_after": 1,
+    "consistency_achieved": true,
+    "stale_read_possible": false
+  }
+}

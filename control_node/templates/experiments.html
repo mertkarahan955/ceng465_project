@@ -64,18 +64,18 @@ body {
 /* ── Layout ───────────────────────────────────────────────────── */
 .layout {
   display: grid;
-  grid-template-columns: 260px 1fr;
+  grid-template-columns: 270px 1fr;
   gap: 0;
   height: calc(100vh - 52px);
 }
 .sidebar {
   background: var(--bg2);
   border-right: 1px solid var(--border);
-  padding: 20px 16px;
+  padding: 16px 14px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 .main {
   padding: 24px;
@@ -85,11 +85,21 @@ body {
   gap: 20px;
 }
 
+/* ── Section labels ───────────────────────────────────────────── */
+.section-label {
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  font-weight: 600;
+  margin-top: 4px;
+}
+
 /* ── Experiment Cards ─────────────────────────────────────────── */
 .exp-card {
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 14px;
+  padding: 12px;
   background: var(--bg3);
   cursor: pointer;
   transition: border-color .15s, background .15s;
@@ -105,7 +115,7 @@ body {
   font-weight: 600;
   font-size: 12px;
   color: var(--white);
-  margin-bottom: 4px;
+  margin-bottom: 3px;
 }
 .exp-card-desc {
   font-size: 11px;
@@ -120,7 +130,7 @@ body {
   font-weight: 600;
   padding: 2px 8px;
   border-radius: 12px;
-  margin-top: 8px;
+  margin-top: 6px;
 }
 .badge-sync    { background: rgba(63,185,80,.15);  color: var(--green);  }
 .badge-async   { background: rgba(240,136,62,.15); color: var(--orange); }
@@ -129,8 +139,8 @@ body {
 
 .run-btn {
   width: 100%;
-  margin-top: 10px;
-  padding: 8px;
+  margin-top: 8px;
+  padding: 7px;
   border: none;
   border-radius: 6px;
   background: var(--blue);
@@ -143,6 +153,52 @@ body {
 .run-btn:hover    { opacity: .85; }
 .run-btn:disabled { opacity: .5; cursor: not-allowed; }
 .run-btn.running  { background: var(--yellow); color: #000; }
+
+/* ── History section ──────────────────────────────────────────── */
+.history-divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 6px 0;
+}
+
+.hist-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background .1s;
+  font-size: 11px;
+  color: var(--muted);
+  border: 1px solid transparent;
+}
+.hist-item:hover { background: var(--bg3); color: var(--text); border-color: var(--border); }
+.hist-item .hist-exp-tag {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.tag-sync    { background: rgba(63,185,80,.2);  color: var(--green);  }
+.tag-async   { background: rgba(240,136,62,.2); color: var(--orange); }
+.tag-raw     { background: rgba(88,166,255,.2); color: var(--blue);   }
+.tag-mono    { background: rgba(163,113,247,.2);color: var(--purple); }
+
+.hist-item .hist-time {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hist-item .hist-ms {
+  font-family: monospace;
+  font-size: 10px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
 
 /* ── Welcome ──────────────────────────────────────────────────── */
 .welcome {
@@ -185,6 +241,7 @@ body {
   gap: 16px;
   padding: 16px 20px;
   border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
 }
 .verdict-badge {
   font-size: 14px;
@@ -297,6 +354,20 @@ details summary:hover { color: var(--text); }
   animation: spin .7s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── History badge ────────────────────────────────────────────── */
+.from-history-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 12px;
+  background: rgba(163,113,247,.15);
+  color: var(--purple);
+  border: 1px solid rgba(163,113,247,.3);
+}
 </style>
 </head>
 <body>
@@ -311,12 +382,10 @@ details summary:hover { color: var(--text); }
 
 <div class="layout">
 
-  <!-- ── Sidebar: experiment cards ──────────────────────────── -->
+  <!-- ── Sidebar ─────────────────────────────────────────────── -->
   <aside class="sidebar">
 
-    <div style="font-size:11px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px;">
-      Experiments
-    </div>
+    <div class="section-label">Experiments</div>
 
     <!-- 1. Synchronous Replication -->
     <div class="exp-card" id="card-sync_replication" onclick="selectExperiment('sync_replication')">
@@ -343,8 +412,8 @@ details summary:hover { color: var(--text); }
     <!-- 3. Read-After-Write -->
     <div class="exp-card" id="card-read_after_write" onclick="selectExperiment('read_after_write')">
       <div class="exp-card-title">③ Read-After-Write</div>
-      <div class="exp-card-desc">Kullanıcı yazdığını primary'den anında okur — secondary'den stale gelebilir</div>
-      <span class="exp-badge badge-primary">PRIMARY read</span>
+      <div class="exp-card-desc">w=1 async yazar — primary'den her zaman taze, secondary stale olabilir</div>
+      <span class="exp-badge badge-primary">w=1 · PRIMARY read</span>
       <button class="run-btn" id="btn-read_after_write"
               onclick="event.stopPropagation(); runExperiment('read_after_write')">
         ▶ Run
@@ -362,32 +431,41 @@ details summary:hover { color: var(--text); }
       </button>
     </div>
 
-    <div style="margin-top:auto;font-size:10px;color:var(--muted);line-height:1.5">
+    <!-- ── History ──────────────────────────────────────────── -->
+    <hr class="history-divider">
+    <div class="section-label" style="display:flex;align-items:center;gap:6px;">
+      History
+      <span id="hist-loading" style="display:none" class="spinner" style="width:10px;height:10px"></span>
+    </div>
+    <div id="hist-list" style="display:flex;flex-direction:column;gap:3px;">
+      <div style="font-size:11px;color:var(--muted);padding:4px 8px;">Loading…</div>
+    </div>
+
+    <div style="margin-top:auto;padding-top:12px;font-size:10px;color:var(--muted);line-height:1.6">
       PRIMARY: <span style="color:var(--green)">192.168.88.30</span><br>
       SECONDARY: <span style="color:var(--blue)">192.168.88.70</span><br>
       Replica Set: <span style="color:var(--white)">rs0</span>
     </div>
   </aside>
 
-  <!-- ── Main: timeline + results ───────────────────────────── -->
+  <!-- ── Main ────────────────────────────────────────────────── -->
   <main class="main" id="main-area">
-
     <div class="welcome" id="welcome-msg">
       <h2>Select an Experiment</h2>
       <p>Sol panelden bir consistency deneyi seçin ve <strong>▶ Run</strong> butonuna tıklayın.<br>
-         Sonuçlar DDIA-style timeline diyagramı ile görselleştirilecek.</p>
+         Sonuçlar DDIA-style timeline diyagramı ile görselleştirilecek.<br><br>
+         Geçmiş deney sonuçları için <strong>History</strong> bölümünü kullanın.</p>
     </div>
-
   </main>
 </div>
 
-<!-- ── SVG Timeline Drawing Engine ──────────────────────────────── -->
+<!-- ── Scripts ────────────────────────────────────────────────── -->
 <script>
 /* ── Constants ────────────────────────────────────────────────── */
 const ACTOR_CFG = {
-  client:    { label: 'Client / Dashboard',           color: '#e6edf3', ip: '(control node)' },
-  primary:   { label: 'PRIMARY',  color: '#3fb950', ip: '192.168.88.30' },
-  secondary: { label: 'SECONDARY',color: '#58a6ff', ip: '192.168.88.70' },
+  client:    { label: 'Client / Dashboard', color: '#e6edf3', ip: '(control node)' },
+  primary:   { label: 'PRIMARY',            color: '#3fb950', ip: '192.168.88.30'  },
+  secondary: { label: 'SECONDARY',          color: '#58a6ff', ip: '192.168.88.70'  },
 };
 const ACTORS = ['client', 'primary', 'secondary'];
 
@@ -400,6 +478,13 @@ const EVENT_COLORS = {
   stale_response: '#f85149',
   fresh_response: '#3fb950',
   waiting:        '#e3b341',
+};
+
+const EXP_TAG = {
+  sync_replication:    { cls: 'tag-sync',  label: 'SYNC' },
+  eventual_consistency:{ cls: 'tag-async', label: 'EC'   },
+  read_after_write:    { cls: 'tag-raw',   label: 'RAW'  },
+  monotonic_reads:     { cls: 'tag-mono',  label: 'MONO' },
 };
 
 let currentExperiment = null;
@@ -415,18 +500,17 @@ function selectExperiment(name) {
 /* ── Run experiment ───────────────────────────────────────────── */
 async function runExperiment(name) {
   selectExperiment(name);
-  const btn = document.getElementById('btn-' + name);
+  const btn  = document.getElementById('btn-' + name);
   const card = document.getElementById('card-' + name);
   btn.disabled = true;
   btn.classList.add('running');
   btn.textContent = '⏳ Running…';
   card.classList.add('running');
 
-  // Show loading state in main
   showLoading(name);
 
   try {
-    const res = await fetch('/api/experiment/run', {
+    const res  = await fetch('/api/experiment/run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ experiment: name }),
@@ -438,18 +522,14 @@ async function runExperiment(name) {
     btn.textContent = '▶ Run Again';
     card.classList.remove('running');
 
-    if (!json.ok) {
-      showError(json.error || 'Unknown error');
-      return;
-    }
+    if (!json.ok) { showError(json.error || 'Unknown error'); return; }
 
-    const achieved = json.result.summary?.consistency_achieved;
-    const stale    = json.result.summary?.stale_read_observed;
+    const stale = json.result.summary?.stale_read_observed;
     card.classList.add('done');
     if (stale) card.classList.add('stale'); else card.classList.remove('stale');
 
-    renderResult(json.result);
-
+    renderResult(json.result, false);
+    loadHistory(); // refresh history list
   } catch (e) {
     btn.classList.remove('running');
     btn.disabled = false;
@@ -458,10 +538,75 @@ async function runExperiment(name) {
   }
 }
 
-/* ── Loading state ────────────────────────────────────────────── */
+/* ── History ──────────────────────────────────────────────────── */
+async function loadHistory() {
+  try {
+    const res  = await fetch('/api/experiment/results');
+    const json = await res.json();
+    if (!json.ok) return;
+    renderHistoryList(json.results);
+  } catch (e) { /* silently ignore */ }
+}
+
+function renderHistoryList(results) {
+  const container = document.getElementById('hist-list');
+  const all = [];
+
+  for (const [expName, items] of Object.entries(results)) {
+    for (const item of items.slice(0, 5)) {
+      all.push({ expName, ...item });
+    }
+  }
+
+  // Sort by saved_at desc
+  all.sort((a, b) => b.saved_at.localeCompare(a.saved_at));
+
+  if (all.length === 0) {
+    container.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:4px 8px;">No saved results yet</div>';
+    return;
+  }
+
+  container.innerHTML = all.slice(0, 15).map(item => {
+    const tag  = EXP_TAG[item.expName] || { cls: 'tag-sync', label: '??' };
+    const when = fmtSavedAt(item.saved_at);
+    const ms   = item.summary?.write_returned_ms != null
+                   ? item.summary.write_returned_ms.toFixed(0) + 'ms'
+                   : '';
+    return `<div class="hist-item"
+                 onclick="loadHistoryItem('${item.expName}', '${item.filename}')"
+                 title="${item.expName} — ${item.saved_at}">
+      <span class="hist-exp-tag ${tag.cls}">${tag.label}</span>
+      <span class="hist-time">${when}</span>
+      ${ms ? `<span class="hist-ms">${ms}</span>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function fmtSavedAt(iso) {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString('tr-TR', {
+      month: '2-digit', day: '2-digit',
+      hour: '2-digit',  minute: '2-digit', second: '2-digit',
+    });
+  } catch { return iso.slice(0, 19); }
+}
+
+async function loadHistoryItem(expName, filename) {
+  showLoading(expName);
+  try {
+    const res  = await fetch(`/api/experiment/results/${expName}/${filename}`);
+    const json = await res.json();
+    if (!json.ok) { showError(json.error || 'Load failed'); return; }
+    renderResult(json.result, true);
+    selectExperiment(expName);
+  } catch (e) { showError(e.message); }
+}
+
+/* ── Loading / Error states ───────────────────────────────────── */
 function showLoading(name) {
-  const main = document.getElementById('main-area');
-  main.innerHTML = `
+  document.getElementById('main-area').innerHTML = `
     <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;
                 height:300px;gap:16px;color:var(--muted)">
       <div class="spinner" style="width:32px;height:32px;border-width:3px"></div>
@@ -479,17 +624,15 @@ function showError(msg) {
 }
 
 /* ── Main renderer ────────────────────────────────────────────── */
-function renderResult(result) {
-  const main = document.getElementById('main-area');
+function renderResult(result, fromHistory) {
+  const main    = document.getElementById('main-area');
+  const summary = result.summary || {};
+  const events  = result.events  || [];
+  const log     = result.log;
+  const reads   = result.reads;
+  const achieved= summary.consistency_achieved;
+  const stale   = summary.stale_read_observed;
 
-  const summary   = result.summary || {};
-  const events    = result.events  || [];
-  const log       = result.log;
-  const reads     = result.reads;
-  const achieved  = summary.consistency_achieved;
-  const stale     = summary.stale_read_observed;
-
-  // Verdict text
   let verdictClass = achieved ? 'verdict-ok' : 'verdict-fail';
   let verdictText  = achieved ? '✓ CONSISTENCY SATISFIED' : '✗ CONSISTENCY VIOLATED';
   if (stale && achieved) {
@@ -497,17 +640,12 @@ function renderResult(result) {
     verdictText  = '⚡ EVENTUAL — stale read observed, eventually consistent';
   }
 
-  // Summary stats
-  const statRows = buildStatRows(summary, result.experiment);
+  const statRows = buildStatRows(summary);
 
-  // Verdict HTML
-  const verdictHtml = `
-    <div class="verdict-row">
-      <div class="verdict-badge ${verdictClass}">${verdictText}</div>
-      <div class="verdict-stats">${statRows}</div>
-    </div>`;
+  const fromHistoryBadge = fromHistory
+    ? `<span class="from-history-badge">📂 Loaded from history</span>`
+    : '';
 
-  // Build events table
   const evTableRows = events
     .filter(e => e.from !== e.to)
     .map(e => `
@@ -519,29 +657,25 @@ function renderResult(result) {
         <td class="type-${e.type}" style="font-weight:600">${e.type}</td>
         <td>${escHtml(e.label)}</td>
         <td style="color:var(--muted)">${e.latency_ms != null ? e.latency_ms.toFixed(1)+'ms' : '—'}</td>
-      </tr>
-    `).join('');
+      </tr>`).join('');
 
-  // Log JSON
   const logHtml = log ? `
     <details>
       <summary>Operation Log Entry (from operation_logs)</summary>
       <pre class="log-pre">${escHtml(JSON.stringify(log, null, 2))}</pre>
     </details>` : '';
 
-  // Monotonic reads table (if applicable)
   const readsHtml = reads ? buildReadsTable(reads) : '';
 
   main.innerHTML = `
     <div class="result-panel">
 
-      <!-- Title -->
-      <div style="display:flex;align-items:center;gap:12px">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
         <h2 style="font-size:16px;color:var(--white)">${escHtml(result.title)}</h2>
+        ${fromHistoryBadge}
         <span style="font-size:12px;color:var(--muted)">${escHtml(result.description)}</span>
       </div>
 
-      <!-- Verdict + Stats -->
       <div class="panel-box">
         <div class="panel-header">
           📊 Experiment Result
@@ -551,10 +685,14 @@ function renderResult(result) {
             w = <strong style="color:var(--orange)">${escHtml(String(summary.write_concern || '—'))}</strong>
           </span>
         </div>
-        <div class="panel-body">${verdictHtml}</div>
+        <div class="panel-body">
+          <div class="verdict-row">
+            <div class="verdict-badge ${verdictClass}">${verdictText}</div>
+            <div class="verdict-stats">${statRows}</div>
+          </div>
+        </div>
       </div>
 
-      <!-- Timeline SVG -->
       <div class="panel-box">
         <div class="panel-header">
           🕐 Communication Timeline
@@ -569,20 +707,14 @@ function renderResult(result) {
 
       ${readsHtml}
 
-      <!-- Event log table -->
       <div class="panel-box">
         <div class="panel-header">📋 Event Log</div>
         <div class="panel-body">
           <table class="event-table">
             <thead>
               <tr>
-                <th>t (ms)</th>
-                <th>From</th>
-                <th></th>
-                <th>To</th>
-                <th>Type</th>
-                <th>Label</th>
-                <th>Latency</th>
+                <th>t (ms)</th><th>From</th><th></th><th>To</th>
+                <th>Type</th><th>Label</th><th>Latency</th>
               </tr>
             </thead>
             <tbody>${evTableRows}</tbody>
@@ -590,17 +722,14 @@ function renderResult(result) {
         </div>
       </div>
 
-      <!-- Raw log -->
       ${logHtml}
-
     </div>`;
 
-  // Draw the SVG after DOM is ready
   requestAnimationFrame(() => drawTimeline('timeline-wrap', events));
 }
 
 /* ── Stats helper ─────────────────────────────────────────────── */
-function buildStatRows(s, expName) {
+function buildStatRows(s) {
   const rows = [];
   const stat = (label, value, cls='') =>
     `<div class="stat-item">
@@ -608,31 +737,28 @@ function buildStatRows(s, expName) {
        <div class="stat-value ${cls}">${value}</div>
      </div>`;
 
-  if (s.write_returned_ms   != null) rows.push(stat('Write returned', s.write_returned_ms.toFixed(1) + ' ms', 'blue'));
-  if (s.replication_delay_ms!= null) rows.push(stat('Repl. delay',   s.replication_delay_ms.toFixed(1)+ ' ms', 'orange'));
-  if (s.primary_read_ms     != null) rows.push(stat('Primary read',  s.primary_read_ms.toFixed(1)    + ' ms', 'green'));
-  if (s.consistency_window_ms!=null) rows.push(stat('Consistency window', s.consistency_window_ms.toFixed(1)+' ms', 'orange'));
-  if (s.version_after       != null) rows.push(stat('Version after', 'v' + s.version_after, 'white'));
-  if (s.final_version       != null) rows.push(stat('Final version', 'v' + s.final_version, 'white'));
+  if (s.write_returned_ms    != null) rows.push(stat('Write returned',      s.write_returned_ms.toFixed(1)    + ' ms', 'blue'));
+  if (s.replication_delay_ms != null) rows.push(stat('Repl. delay',         s.replication_delay_ms.toFixed(1) + ' ms', 'orange'));
+  if (s.primary_read_ms      != null) rows.push(stat('Primary read',        s.primary_read_ms.toFixed(1)      + ' ms', 'green'));
+  if (s.consistency_window_ms!= null) rows.push(stat('Consistency window',  s.consistency_window_ms.toFixed(1)+ ' ms', 'orange'));
+  if (s.version_after        != null) rows.push(stat('Version after',       'v' + s.version_after,                     'white'));
+  if (s.final_version        != null) rows.push(stat('Final version',       'v' + s.final_version,                     'white'));
 
   if (s.stale_read_observed != null)
     rows.push(stat('Stale read', s.stale_read_observed ? 'YES ⚡' : 'NO ✓',
                    s.stale_read_observed ? 'red' : 'green'));
 
   if (s.primary_fresh != null)
-    rows.push(stat('Primary read', s.primary_fresh ? 'FRESH ✓' : 'STALE ⚡',
-                   s.primary_fresh ? 'green' : 'red'));
+    rows.push(stat('Primary read',   s.primary_fresh   ? 'FRESH ✓' : 'STALE ⚡', s.primary_fresh   ? 'green' : 'red'));
 
   if (s.secondary_fresh != null)
-    rows.push(stat('Secondary read', s.secondary_fresh ? 'FRESH ✓' : 'STALE ⚡',
-                   s.secondary_fresh ? 'green' : 'red'));
+    rows.push(stat('Secondary read', s.secondary_fresh ? 'FRESH ✓' : 'STALE ⚡', s.secondary_fresh ? 'green' : 'red'));
 
   if (s.versions_seen && s.versions_seen.length)
-    rows.push(stat('Versions seen', s.versions_seen.map(v=>'v'+v).join(' → '), 'purple'));
+    rows.push(stat('Versions seen', s.versions_seen.map(v => 'v' + v).join(' → '), 'purple'));
 
   if (s.monotonic != null)
-    rows.push(stat('Monotonic', s.monotonic ? 'YES ✓' : 'VIOLATED ✗',
-                   s.monotonic ? 'green' : 'red'));
+    rows.push(stat('Monotonic', s.monotonic ? 'YES ✓' : 'VIOLATED ✗', s.monotonic ? 'green' : 'red'));
 
   return rows.join('');
 }
@@ -667,87 +793,78 @@ function drawTimeline(containerId, events) {
   const wrap = document.getElementById(containerId);
   if (!wrap) return;
 
-  const W        = Math.max(wrap.clientWidth || 760, 760);
-  const TRACK_H  = 120;   // vertical distance between tracks
-  const PAD_TOP  = 30;
-  const PAD_BOT  = 50;    // space for time axis
-  const LAB_W    = 148;   // left label area
-  const PAD_R    = 24;
+  const W        = Math.max(wrap.clientWidth || 800, 760);
+  const TRACK_H  = 130;   // vertical gap between actor lanes
+  const PAD_TOP  = 36;
+  const PAD_BOT  = 52;
+  const LAB_W    = 152;
+  const PAD_R    = 28;
   const CHART_W  = W - LAB_W - PAD_R;
-  const H        = PAD_TOP + TRACK_H * (ACTORS.length - 1) + PAD_TOP + PAD_BOT + 10;
+  const H        = PAD_TOP + TRACK_H * (ACTORS.length - 1) + PAD_TOP + PAD_BOT;
 
-  // Y positions per actor
   const actorY = {};
   ACTORS.forEach((a, i) => { actorY[a] = PAD_TOP + i * TRACK_H; });
 
-  // Filter events that cross actors
-  const arrowEvents = events.filter(e => e.from !== e.to && actorY[e.from] !== undefined && actorY[e.to] !== undefined);
-  const waitEvents  = events.filter(e => e.from === e.to && e.type === 'waiting');
+  const arrowEvents = events.filter(e =>
+    e.from !== e.to &&
+    actorY[e.from] !== undefined &&
+    actorY[e.to]   !== undefined
+  );
 
-  // Collect all time points to determine scale
+  // Collect all time points
   const allT = [];
   arrowEvents.forEach(e => {
     allT.push(e.t_ms);
     allT.push(e.t_ms + (e.latency_ms || 5));
   });
-  waitEvents.forEach(e => allT.push(e.t_ms));
 
   const maxT = Math.max(...allT, 1);
 
-  // Build x-positions with minimum spacing enforcement
-  // We collect distinct t values, sort them, enforce minGap, then interpolate
-  const MIN_SLOT_PX = 65;
+  const MIN_SLOT_PX = 60;
   const rawTimes    = [...new Set(allT)].sort((a, b) => a - b);
   const slotX       = buildSlots(rawTimes, CHART_W, MIN_SLOT_PX);
-  const toPx        = (t) => LAB_W + interpolateSlot(t, rawTimes, slotX);
+  const toPx        = t => LAB_W + interpolateSlot(t, rawTimes, slotX);
 
-  // SVG parts
   let defs = '';
   let body = '';
 
   // Arrowhead markers per color
   const colorSet = new Set(arrowEvents.map(e => EVENT_COLORS[e.type] || '#8b949e'));
-  const colorArr = [...colorSet];
-  colorArr.forEach((color, i) => {
+  [...colorSet].forEach((color, i) => {
     defs += `
       <marker id="arr${i}" markerWidth="8" markerHeight="6"
               refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
-        <polygon points="0 0, 8 3, 0 6" fill="${color}" opacity=".9"/>
+        <polygon points="0 0, 8 3, 0 6" fill="${color}" opacity=".95"/>
       </marker>`;
   });
   const colorToMarker = {};
-  colorArr.forEach((c, i) => { colorToMarker[c] = `arr${i}`; });
+  [...colorSet].forEach((c, i) => { colorToMarker[c] = `arr${i}`; });
 
-  // Actor baselines + labels
+  // Actor lanes + labels
   ACTORS.forEach(name => {
     const cfg = ACTOR_CFG[name];
     const y   = actorY[name];
-
-    // Label (left side)
     body += `
-      <text x="${LAB_W - 10}" y="${y - 6}" text-anchor="end"
+      <text x="${LAB_W - 10}" y="${y - 7}" text-anchor="end"
             font-family="monospace" font-size="11" font-weight="700"
             fill="${cfg.color}">${escSvg(cfg.label)}</text>
-      <text x="${LAB_W - 10}" y="${y + 6}" text-anchor="end"
-            font-family="monospace" font-size="9" fill="${cfg.color}" opacity=".6"
-            >${escSvg(cfg.ip)}</text>`;
-
-    // Dashed baseline
-    body += `
+      <text x="${LAB_W - 10}" y="${y + 5}" text-anchor="end"
+            font-family="monospace" font-size="9" fill="${cfg.color}" opacity=".55"
+            >${escSvg(cfg.ip)}</text>
       <line x1="${LAB_W}" y1="${y}" x2="${W - PAD_R}" y2="${y}"
-            stroke="${cfg.color}" stroke-width="1" stroke-dasharray="5,5" opacity=".25"/>`;
+            stroke="${cfg.color}" stroke-width="1" stroke-dasharray="5,5" opacity=".2"/>`;
   });
 
   // Time axis
-  const axisY = PAD_TOP + (ACTORS.length - 1) * TRACK_H + 40;
+  const axisY = PAD_TOP + (ACTORS.length - 1) * TRACK_H + 42;
   body += `
     <line x1="${LAB_W}" y1="${axisY}" x2="${W - PAD_R}" y2="${axisY}"
           stroke="#30363d" stroke-width="1"/>
     <text x="${W - PAD_R - 2}" y="${axisY + 12}" font-size="9" fill="#8b949e"
           text-anchor="end" font-family="monospace">t (ms) →</text>`;
 
-  // Time ticks (a subset of rawTimes)
-  const tickInterval = Math.ceil(rawTimes.length / 8);
+  // Time ticks
+  const tickInterval = Math.max(1, Math.ceil(rawTimes.length / 8));
   rawTimes.forEach((t, idx) => {
     if (idx % tickInterval !== 0 && idx !== rawTimes.length - 1) return;
     const x = toPx(t);
@@ -755,20 +872,7 @@ function drawTimeline(containerId, events) {
       <line x1="${x}" y1="${axisY}" x2="${x}" y2="${axisY - 5}"
             stroke="#8b949e" stroke-width="0.5"/>
       <text x="${x}" y="${axisY + 12}" font-size="8" fill="#8b949e"
-            text-anchor="middle" font-family="monospace">${t.toFixed(0)}</text>`;
-  });
-
-  // "Waiting" bars on primary
-  waitEvents.forEach(e => {
-    const y   = actorY[e.from];
-    const x1  = toPx(e.t_ms);
-    const x2  = toPx(maxT);
-    body += `
-      <rect x="${x1}" y="${y - 6}" width="${x2 - x1}" height="12"
-            fill="rgba(227,179,65,.08)" stroke="#e3b341" stroke-width="0.8"
-            stroke-dasharray="3,3" rx="3"/>
-      <text x="${x1 + 6}" y="${y + 4}" font-size="9" fill="#e3b341"
-            font-family="monospace">${escSvg(e.label)}</text>`;
+            text-anchor="middle" font-family="monospace">${Math.round(t)}</text>`;
   });
 
   // Arrow events
@@ -782,66 +886,129 @@ function drawTimeline(containerId, events) {
     const x2 = toPx(e.t_ms + (e.latency_ms || 5));
     const y2 = actorY[e.to];
 
-    const dashAttr = isDashed ? 'stroke-dasharray="7,4"' : '';
+    const dashAttr = isDashed ? 'stroke-dasharray="8,4"' : '';
 
     // Arrow line
     body += `
       <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"
-            stroke="${color}" stroke-width="1.6" ${dashAttr}
+            stroke="${color}" stroke-width="1.8" ${dashAttr}
             marker-end="url(#${markerId})" opacity=".9"/>`;
 
-    // Dot at send point
-    body += `<circle cx="${x1}" cy="${y1}" r="3" fill="${color}" opacity=".7"/>`;
+    // Filled circle at send point
+    body += `<circle cx="${x1}" cy="${y1}" r="3.5" fill="${color}" opacity=".85"/>`;
 
-    // Label
-    const mx = (x1 + x2) / 2;
-    const my = (y1 + y2) / 2;
+    // Open circle at receive point (for all arrow types)
+    body += `<circle cx="${x2}" cy="${y2}" r="3.5" fill="none" stroke="${color}" stroke-width="1.5" opacity=".85"/>`;
+
+    // Label placement: above or below based on direction
     const goingDown = y2 > y1;
-
-    // Perpendicular offset for label
-    const angle = Math.atan2(y2 - y1, x2 - x1);
-    const perpX = -Math.sin(angle) * 10;
-    const perpY =  Math.cos(angle) * 10;
-    const lx = mx + perpX + (goingDown ? 4 : -4);
-    const ly = my + perpY;
-    const anchor = goingDown ? 'start' : 'end';
+    const angle     = Math.atan2(y2 - y1, x2 - x1);
+    // Place label at 40% along the arrow, offset perpendicular
+    const frac = 0.42;
+    const lx_center = x1 + (x2 - x1) * frac;
+    const ly_center = y1 + (y2 - y1) * frac;
+    const perpLen   = 12;
+    const perpX     = -Math.sin(angle) * perpLen;
+    const perpY     =  Math.cos(angle) * perpLen;
+    const anchor    = (lx_center > (W * 0.7)) ? 'end' : 'start';
 
     body += `
-      <text x="${lx}" y="${ly}" font-size="9.5" fill="${color}"
+      <text x="${lx_center + perpX}" y="${ly_center + perpY}"
+            font-size="9.5" fill="${color}"
             text-anchor="${anchor}" font-family="monospace" font-weight="600"
             >${escSvg(e.label)}</text>`;
 
-    // Stale: dashed red box around receive point
+    // Stale box
     if (e.type === 'stale_response') {
-      const bw = Math.max(e.label.length * 5.5 + 10, 80);
+      const bw = Math.max(e.label.length * 5.5 + 12, 80);
+      const bx = goingDown ? x2 : x2 - bw + 4;
       body += `
-        <rect x="${x2 - 4}" y="${y2 - 10}" width="${bw}" height="20"
-              fill="rgba(248,81,73,.07)" stroke="#f85149" stroke-width="1"
+        <rect x="${bx - 4}" y="${y2 - 10}" width="${bw}" height="20"
+              fill="rgba(248,81,73,.08)" stroke="#f85149" stroke-width="1"
               stroke-dasharray="3,2" rx="3"/>`;
     }
 
-    // Fresh: green checkmark dot at receive point
-    if (e.type === 'fresh_response') {
-      body += `<circle cx="${x2}" cy="${y2}" r="4" fill="none" stroke="#3fb950" stroke-width="1.5"/>`;
-    }
-
-    // Time label at origin tick
+    // Axis tick for send point
     body += `
       <line x1="${x1}" y1="${axisY}" x2="${x1}" y2="${axisY - 3}"
-            stroke="${color}" stroke-width="0.8" opacity=".5"/>`;
+            stroke="${color}" stroke-width="0.8" opacity=".45"/>`;
+  });
+
+  // ── Request-Response connectors ────────────────────────────────
+  // For each response event, find its matching request and draw a
+  // horizontal span line on the responding actor's lane showing
+  // the time between request arrival and response departure.
+  const REQ_TYPES  = new Set(['write', 'read', 'replicate']);
+  const RESP_TYPES = new Set(['ok', 'fresh_response', 'stale_response', 'ack']);
+
+  const requests  = arrowEvents.filter(e => REQ_TYPES.has(e.type));
+  const responses = arrowEvents.filter(e => RESP_TYPES.has(e.type));
+
+  const usedReqIdx = new Set();
+  responses.forEach(resp => {
+    // Find the most-recent matching request: went from resp.to → resp.from
+    // and arrived at resp.from before resp departs (with 2ms tolerance)
+    const arrivalCutoff = resp.t_ms + 2;
+    const candidates = requests
+      .map((req, idx) => ({ req, idx }))
+      .filter(({ req, idx }) =>
+        !usedReqIdx.has(idx) &&
+        req.to   === resp.from &&
+        req.from === resp.to  &&
+        (req.t_ms + (req.latency_ms || 0)) <= arrivalCutoff
+      )
+      .sort((a, b) =>
+        (b.req.t_ms + (b.req.latency_ms || 0)) -
+        (a.req.t_ms + (a.req.latency_ms || 0))
+      );
+
+    if (candidates.length === 0) return;
+    const { req, idx } = candidates[0];
+    usedReqIdx.add(idx);
+
+    const actor  = resp.from; // the machine that handled the request
+    const y      = actorY[actor];
+    const xArrive = toPx(req.t_ms  + (req.latency_ms  || 0)); // request arrives
+    const xDepart = toPx(resp.t_ms);                           // response departs
+
+    const xL = Math.min(xArrive, xDepart);
+    const xR = Math.max(xArrive, xDepart);
+    if (xR - xL < 3) return; // nothing visible to draw
+
+    const respColor = EVENT_COLORS[resp.type] || '#8b949e';
+
+    // Shaded processing-time band
+    body += `
+      <rect x="${xL}" y="${y - 5}" width="${xR - xL}" height="10"
+            fill="${respColor}" opacity=".07" rx="2"/>`;
+
+    // Solid horizontal connector line
+    body += `
+      <line x1="${xL}" y1="${y}" x2="${xR}" y2="${y}"
+            stroke="${respColor}" stroke-width="2" opacity=".45"
+            stroke-linecap="round"/>`;
+
+    // Small vertical tick at request-arrival point
+    body += `
+      <line x1="${xArrive}" y1="${y - 6}" x2="${xArrive}" y2="${y + 6}"
+            stroke="${respColor}" stroke-width="1.2" opacity=".55"/>`;
+    // Small vertical tick at response-departure point
+    body += `
+      <line x1="${xDepart}" y1="${y - 6}" x2="${xDepart}" y2="${y + 6}"
+            stroke="${respColor}" stroke-width="1.2" opacity=".55"/>`;
   });
 
   // Legend
   const legendItems = [
-    { color: EVENT_COLORS.write,          label: 'write' },
+    { color: EVENT_COLORS.write,          label: 'write',            dashed: false },
     { color: EVENT_COLORS.replicate,      label: 'oplog replication', dashed: true },
-    { color: EVENT_COLORS.ack,            label: 'ACK' },
-    { color: EVENT_COLORS.ok,             label: 'ok / response' },
-    { color: EVENT_COLORS.read,           label: 'read request' },
-    { color: EVENT_COLORS.stale_response, label: 'stale response' },
-    { color: EVENT_COLORS.fresh_response, label: 'fresh response' },
+    { color: EVENT_COLORS.ack,            label: 'ACK',              dashed: false },
+    { color: EVENT_COLORS.ok,             label: 'ok / response',    dashed: false },
+    { color: EVENT_COLORS.read,           label: 'read request',     dashed: false },
+    { color: EVENT_COLORS.stale_response, label: 'stale response',   dashed: false },
+    { color: EVENT_COLORS.fresh_response, label: 'fresh response',   dashed: false },
   ];
-  const legendY = H - 8;
+  const legendY = H + 8;
   let lx = LAB_W;
   legendItems.forEach(item => {
     const dash = item.dashed ? 'stroke-dasharray="5,3"' : '';
@@ -850,11 +1017,11 @@ function drawTimeline(containerId, events) {
             stroke="${item.color}" stroke-width="2" ${dash}/>
       <text x="${lx + 22}" y="${legendY + 4}" font-size="9" fill="${item.color}"
             font-family="monospace">${item.label}</text>`;
-    lx += item.label.length * 6 + 32;
-    if (lx > W - 60) lx = LAB_W; // wrap (simplified)
+    lx += item.label.length * 6 + 30;
+    if (lx > W - 80) lx = LAB_W;
   });
 
-  const finalH = H + 20;
+  const finalH = legendY + 22;
   wrap.innerHTML = `
     <svg xmlns="http://www.w3.org/2000/svg"
          width="${W}" height="${finalH}"
@@ -865,53 +1032,32 @@ function drawTimeline(containerId, events) {
 }
 
 /* ── Slot helpers ─────────────────────────────────────────────── */
-
-/**
- * Given sorted rawTimes and chart width, return x-offsets (from 0) with
- * minimum MIN_GAP_PX between consecutive slots.
- */
 function buildSlots(sortedTimes, chartW, minGapPx) {
   if (sortedTimes.length === 0) return [];
   const maxT = sortedTimes[sortedTimes.length - 1] || 1;
-
-  // Natural positions
-  const natural = sortedTimes.map(t => (t / maxT) * chartW);
-
-  // Enforce minimum gap (forward pass)
+  const natural   = sortedTimes.map(t => (t / maxT) * chartW);
   const positions = [...natural];
   for (let i = 1; i < positions.length; i++) {
-    if (positions[i] - positions[i - 1] < minGapPx) {
+    if (positions[i] - positions[i - 1] < minGapPx)
       positions[i] = positions[i - 1] + minGapPx;
-    }
   }
-
-  // Scale back to fit chartW (backward pass to rescale if overflow)
-  const totalNeeded = positions[positions.length - 1];
-  if (totalNeeded > chartW) {
-    const scale = chartW / totalNeeded;
-    for (let i = 0; i < positions.length; i++) {
-      positions[i] *= scale;
-    }
+  const total = positions[positions.length - 1];
+  if (total > chartW) {
+    const scale = chartW / total;
+    positions.forEach((_, i) => { positions[i] *= scale; });
   }
-
   return positions;
 }
 
-/**
- * For a given time t (possibly not in rawTimes), interpolate its x-offset.
- */
 function interpolateSlot(t, rawTimes, slotX) {
   if (rawTimes.length === 0) return 0;
-  if (t <= rawTimes[0]) return slotX[0] || 0;
-  if (t >= rawTimes[rawTimes.length - 1]) return slotX[slotX.length - 1] || 0;
-
-  // Binary search for bracketing interval
+  if (t <= rawTimes[0])                        return slotX[0] || 0;
+  if (t >= rawTimes[rawTimes.length - 1])      return slotX[slotX.length - 1] || 0;
   let lo = 0, hi = rawTimes.length - 1;
   while (hi - lo > 1) {
     const mid = (lo + hi) >> 1;
     if (rawTimes[mid] <= t) lo = mid; else hi = mid;
   }
-
   const t0 = rawTimes[lo], t1 = rawTimes[hi];
   const x0 = slotX[lo],    x1 = slotX[hi];
   if (t1 === t0) return x0;
@@ -920,19 +1066,14 @@ function interpolateSlot(t, rawTimes, slotX) {
 
 /* ── Escape helpers ───────────────────────────────────────────── */
 function escSvg(str) {
-  return String(str || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 function escHtml(str) {
-  return String(str || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+
+/* ── Init ─────────────────────────────────────────────────────── */
+loadHistory();
 </script>
 </body>
 </html>

@@ -1,0 +1,77 @@
+{
+  "saved_at": "2026-06-06T20:57:04.671997",
+  "experiment": "eventual_consistency",
+  "title": "Eventual Consistency (w=1)",
+  "description": "Primary hemen döner. Secondary geride kalabilir ama eninde sonunda yakalar. Stale read gözlemlenebilir.",
+  "events": [
+    {
+      "t_ms": 0,
+      "latency_ms": 3,
+      "from": "client",
+      "to": "primary",
+      "label": "write (w=1)",
+      "type": "write"
+    },
+    {
+      "t_ms": 36.900390625,
+      "latency_ms": 3,
+      "from": "primary",
+      "to": "client",
+      "label": "ok (36.9ms) — immediately",
+      "type": "ok"
+    },
+    {
+      "t_ms": 3,
+      "latency_ms": 27.80731201171875,
+      "from": "primary",
+      "to": "secondary",
+      "label": "oplog (async)",
+      "type": "replicate"
+    },
+    {
+      "t_ms": 30.80731201171875,
+      "latency_ms": 3,
+      "from": "secondary",
+      "to": "primary",
+      "label": "oplog applied",
+      "type": "ack"
+    },
+    {
+      "t_ms": 46.076416015625,
+      "latency_ms": 3,
+      "from": "client",
+      "to": "secondary",
+      "label": "read again",
+      "type": "read"
+    },
+    {
+      "t_ms": 50.076416015625,
+      "latency_ms": 3,
+      "from": "secondary",
+      "to": "client",
+      "label": "✓ fresh (41.1ms total)",
+      "type": "fresh_response"
+    }
+  ],
+  "log": {
+    "log_index": 97,
+    "operation_id": "1cc12b1d",
+    "version_before": null,
+    "version_after": 1,
+    "write_concern": "1",
+    "status": "pending_follower",
+    "replication_delay_ms": null,
+    "leader_write_time": "2026-06-06T17:57:04.632000",
+    "follower_visible_time": null,
+    "target_collection": "positions"
+  },
+  "summary": {
+    "write_concern": "1 (async)",
+    "write_returned_ms": 36.9,
+    "replication_delay_ms": null,
+    "consistency_model": "Eventual",
+    "stale_read_observed": false,
+    "consistency_window_ms": 41.08,
+    "consistency_achieved": true
+  }
+}
