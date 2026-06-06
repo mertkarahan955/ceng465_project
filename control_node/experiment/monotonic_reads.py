@@ -37,6 +37,19 @@ _STATUSES = [
 FINAL_VERSION = _STATUSES[-1][1]
 
 
+def _shipment_value(status: str) -> dict:
+    return {
+        "shipment_id": "MON-EXP",
+        "origin_depot": "DEP-IST",
+        "destination_depot": "DEP-ANK",
+        "customer": "MonotonicTest",
+        "weight_kg": 300,
+        "package_count": 3,
+        "status": status,
+        "assigned_vehicle_id": None,
+    }
+
+
 def run_monotonic_reads():
     """Monotonic reads — v1→v5 writes on PRIMARY, then sequential SECONDARY reads.
 
@@ -50,17 +63,6 @@ def run_monotonic_reads():
     net_p = measure_net_one_way(db.get_primary,   config.PRIMARY_NODE_SERVER_URL)
     net_s = measure_net_one_way(db.get_secondary, config.SECONDARY_NODE_SERVER_URL)
 
-    shipment_value = {
-        "shipment_id": "MON-EXP",
-        "origin_depot": "DEP-IST",
-        "destination_depot": "DEP-ANK",
-        "customer": "MonotonicTest",
-        "weight_kg": 300,
-        "package_count": 3,
-        "status": "in_transit",
-        "assigned_vehicle_id": None,
-    }
-
     with write_concern(1):
         t0 = ms()
 
@@ -70,26 +72,34 @@ def run_monotonic_reads():
             300, 3, status=_STATUSES[0][0],
         )
         t_w1 = ms() - t0
-        write_events = [{"v": 1, "t_send": 0.0, "t_recv": t_w1}]
+        write_events = [{
+            "v": 1,
+            "t_send": 0.0,
+            "t_recv": t_w1,
+            "status": _STATUSES[0][0],
+            "value_before": None,
+            "value_after": _shipment_value(_STATUSES[0][0]),
+        }]
 
         # ── Phase 2: v2→v5 updates (w=1, fire-and-forget, as fast as possible) ─
+        prev_status = _STATUSES[0][0]
         for status, v in _STATUSES[1:]:
             t_ws = ms() - t0
             operations.update_item(
                 shp_id,
-                {
-                    "shipment_id":        "MON-EXP",
-                    "origin_depot":       "DEP-IST",
-                    "destination_depot":  "DEP-ANK",
-                    "customer":           "MonotonicTest",
-                    "weight_kg":          300,
-                    "package_count":      3,
-                    "status":             status,
-                },
+                _shipment_value(status),
                 collection="shipments",
             )
             t_we = ms() - t0
-            write_events.append({"v": v, "t_send": t_ws, "t_recv": t_we})
+            write_events.append({
+                "v": v,
+                "t_send": t_ws,
+                "t_recv": t_we,
+                "status": status,
+                "value_before": _shipment_value(prev_status),
+                "value_after": _shipment_value(status),
+            })
+            prev_status = status
 
         # ── Phase 3: measure first appearance on secondary (oplog latency) ────
         repl_ms_actual = None
@@ -138,57 +148,60 @@ def run_monotonic_reads():
     # ── Resolve replication delay ─────────────────────────────────────────────
     repl_ms = repl_ms_actual or (log.get("replication_delay_ms") if log else None) or 5.0
 
-    # Anchor timestamps for oplog events
-    # primary commit happens at net_p after t_send=0; oplog departs from there.
-    oplog_start_ms       = safe_lat(net_p)
+    # Anchor timestamps for oplog events.
+    oplog_start_ms = safe_lat(write_events[0]["t_send"] + net_p)
     secondary_applied_ms = t_poll_rel + (repl_ms_actual or 0)
-    total_repl_ms        = secondary_applied_ms - write_events[0]["t_recv"]
+    total_repl_ms = secondary_applied_ms - write_events[0]["t_recv"]
 
     # ── Build timeline events ─────────────────────────────────────────────────
     events = []
 
     # All 5 writes to PRIMARY (each shows its own processing band)
     for we in write_events:
-        v     = we["v"]
-        ltype = "write"
-        req   = "write (w=1, insert)" if v == 1 else f"update → v{v} (w=1)"
-        ok    = f"ok v{v}" + (f" ({we['t_recv']:.1f}ms)" if v == 1 else "")
-        events += req_resp_events(
+        v = we["v"]
+        req_label = "write shipment (w=1, insert)" if v == 1 else f"update shipment → v{v} (w=1)"
+        ok_label = f"ok v{v}" + (f" ({we['t_recv'] - we['t_send']:.1f}ms)" if v == 1 else "")
+        events.extend(req_resp_events(
             we["t_send"], we["t_recv"], net_p,
             "client", "primary",
-            "write shipment (w=1)", "write",
-            f"ok v1 ({t_w1:.1f}ms)", "ok",
+            req_label, "write",
+            ok_label, "ok",
             req_meta={
                 "collection": "shipments",
-                "db_action": "insert",
+                "db_action": "insert" if v == 1 else "update",
                 "document_id": str(shp_id),
-                "version": "v1",
-                "data": shipment_value,
+                "version": f"v{v}" if v == 1 else f"v{v - 1} -> v{v}",
+                "data": we["value_after"],
+                "data_before": we["value_before"],
             },
             resp_meta={
                 "collection": "shipments",
                 "db_action": "write_ack",
                 "document_id": str(shp_id),
-                "version": "v1",
-                "data": shipment_value,
+                "version": f"v{v}",
+                "data": we["value_after"],
             },
-        ),
-        # Oplog: departs from primary after commit; lands at secondary quickly
+        ))
+
+    # Show the follower eventually applying the final version.
+    final_value = write_events[-1]["value_after"]
+    final_version = write_events[-1]["v"]
+    events.extend([
         {"t_ms": safe_lat(net_p),
          "latency_ms": safe_lat(net_s),
          "from": "primary", "to": "secondary",
          "label": "oplog (async)", "type": "replicate",
-         "collection": "shipments", "db_action": "replicate_insert",
-         "document_id": str(shp_id), "version": "v1", "data": shipment_value},
+         "collection": "shipments", "db_action": "replicate_update",
+         "document_id": str(shp_id), "version": f"v1 -> v{final_version}", "data": final_value},
         # Ack: secondary finishes applying v1 — pairs with oplog for span line
         {"t_ms": secondary_applied_ms,
          "latency_ms": safe_lat(net_s),
          "from": "secondary", "to": "primary",
-         "label": f"✓ write applied (v1) — {total_repl_ms:.0f}ms after write",
+         "label": f"✓ write applied (v{final_version}) — {total_repl_ms:.0f}ms after first write",
          "type": "ack",
          "collection": "shipments", "db_action": "applied_on_secondary",
-         "document_id": str(shp_id), "version": "v1", "data": shipment_value},
-    ]
+         "document_id": str(shp_id), "version": f"v{final_version}", "data": final_value},
+    ])
 
     prev_v = None
     for r in reads:
