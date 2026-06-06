@@ -58,6 +58,23 @@ def section(title):
 # ---------------------------------------------------------------------------
 
 def test_basic_crud():
+    """Test 1 — Temel CRUD + versiyon takibi (items koleksiyonu, w=majority)
+
+    Ne yapar:
+        Insert → Update → Delete sırasıyla çalıştırır ve her adımda
+        secondary'nin doğru versiyonu gördüğünü doğrular.
+
+    Neden önemli:
+        Replication'ın en temel garantisi: primary'ye yazılan her mutation
+        secondary'de de aynı versiyonla görünmeli. w=majority kullandığımız
+        için primary "insert tamam" demeden önce secondary'nin acknowledge
+        etmesini bekler → delay ölçülebilir ama veri kaybolmaz.
+
+    Ne ölçer:
+        - Insert/Update/Delete'in secondary'de gözükmesi için geçen süre (ms)
+        - Soft-delete flag'inin doğru replike edilmesi (deleted=True)
+        - Her operasyondan sonra secondary version = primary version
+    """
     section("Test 1: Basic CRUD (items collection)")
 
     item_id, delay = insert_item("crud_test", {"x": 1})
@@ -94,6 +111,28 @@ def test_basic_crud():
 # ---------------------------------------------------------------------------
 
 def test_fleet_static_collections():
+    """Test 2 — Fleet statik koleksiyonları (vehicles / drivers / depots, w=majority)
+
+    Ne yapar:
+        Araç, sürücü ve depo dokümanlarını ayrı koleksiyonlara insert eder.
+        Her birinin secondary'de görünüp görünmediğini, doğru koleksiyonda
+        olduğunu ve version=1 olduğunu kontrol eder.
+
+    Neden önemli:
+        Tek bir "items" koleksiyonu yerine 6 farklı koleksiyonumuz var.
+        operation_logs'daki target_collection alanı, reconciler'ın hangi
+        koleksiyonu izleyeceğini belirler. Bu test, koleksiyon routing'inin
+        doğru çalıştığını kanıtlar.
+
+    Consistency model:
+        vehicles/drivers/depots nadiren güncellenir → eventual consistency
+        okuma kabul edilebilir. Secondary biraz geride kalsa bile araç tipi
+        veya depo adresi kritik bir karar vermez.
+
+    Ne ölçer:
+        - Her koleksiyon için ayrı insert→secondary lag süresi
+        - Cross-collection replication'ın bağımsız çalışması
+    """
     section("Test 2: Fleet Static Collections (vehicles / drivers / depots)")
 
     # vehicles
@@ -126,6 +165,28 @@ def test_fleet_static_collections():
 # ---------------------------------------------------------------------------
 
 def test_shipment_monotonic_reads():
+    """Test 3 — Monotonic Reads: shipment status asla geri gidemez (w=majority)
+
+    Ne yapar:
+        Bir gönderi oluşturur: pending → in_transit → in_transit → delivered.
+        Her güncellemeden HEMEN SONRA secondary'den version numarasını okur
+        ve bir listeye ekler. Sonunda listenin monoton artan olduğunu doğrular.
+
+    Neden önemli (Monotonic Reads):
+        Bir kullanıcı "gönderi X teslim edildi" gördükten sonra sayfayı yenilediğinde
+        "gönderi X bekliyor" görmemelidir. Secondary'nin oplog uygulaması sıralıdır,
+        bu yüzden versiyon numarası hiç geri gidemez.
+
+        w=majority modunda zaten tüm yazılar acknowledge edildiği için secondary
+        geride kalmaz — test versiyon sıralamasının doğruluğunu kanıtlar.
+
+        w=1 modunda daha dramatik gözlemlenir: primary'de v=5 varken secondary
+        hâlâ v=2 gösterebilir ama hiçbir zaman v=5 → v=3 düşüşü yaşanmaz.
+
+    Ne kanıtlar:
+        secondary_versions = [2, 3, 4, 5]  → Monoton ↑  PASS
+        secondary_versions = [2, 3, 2, 5]  → Geri düştü FAIL  (imkânsız olmalı)
+    """
     section("Test 3: Shipments — Monotonic Reads Experiment")
 
     shp_id, _ = operations.insert_shipment(
@@ -161,6 +222,32 @@ def test_shipment_monotonic_reads():
 # ---------------------------------------------------------------------------
 
 def test_position_burst(n=10):
+    """Test 4 — Position burst: yüksek frekanslı GPS yazma (w=majority)
+
+    Ne yapar:
+        10 adet GPS pozisyon kaydını art arda insert eder. Her insert için
+        replication delay'i ölçer. Tüm yazılar bittikten sonra 500ms bekler
+        ve secondary'de tüm dokümanların var olduğunu doğrular.
+
+    Neden önemli (Eventual Consistency):
+        positions koleksiyonu en yüksek yazma frekansına sahip — gerçek bir
+        filo takip sisteminde her araç saniyede birden fazla konum gönderir.
+        Filo genel görünümü (fleet overview) için secondary'den okumak yeterli:
+        bir aracın konumu 200ms stale kalsa dispatcher'ın kararını etkilemez.
+
+        w=majority bu testte: secondary her yazıyı sırayla onaylar, delay
+        ölçülebilir (avg ~40ms, max ~140ms). Bu gecikme bile gerçek bir
+        sistemde "eventual consistency window" olarak raporlanabilir.
+
+    w=1 farkı:
+        w=1 modunda primary anında döner, secondary 0-500ms geride kalabilir.
+        Fleet Overview (secondary) bu sürede stale konum gösterir — demo'da
+        görsel olarak kanıtlanabilir.
+
+    Ne ölçer:
+        - 10 yazı için avg/max replication delay
+        - Eventual consistency guarantee: tüm yazılar SONUNDA secondary'de görünür
+    """
     section(f"Test 4: Position Burst ({n} GPS updates) — Eventual Consistency")
 
     ids = []
@@ -204,6 +291,33 @@ def test_position_burst(n=10):
 # ---------------------------------------------------------------------------
 
 def test_incident_read_after_write():
+    """Test 5 — Read-After-Write: incident anında primary'den okunabilmeli
+
+    Ne yapar:
+        1. Primary'ye critical severity bir incident yazar.
+        2. HEMEN (hiç bekleme olmadan) primary'den okur.
+        3. get_open_incidents() fonksiyonunun (primary read path) yeni
+           incident'ı döndürdüğünü doğrular.
+
+    Neden önemli (Read-After-Write):
+        Bir dispatcher "TRK-001 yolda kaldı, kritik arıza" bildirimini sisteme
+        girdiğinde ANINDA kendi ekranında görmeli. "Ben az önce girdim, nerede?"
+        dememelidir.
+
+        Read-After-Write garantisi: kullanıcının kendi yazdığı veriyi hemen
+        primary'den okuyabilmesi. Primary her zaman en güncel veriyi tutar
+        (w=1 bile olsa primary'nin kendi local storage'ı tazedir).
+
+    w=majority vs w=1 farkı:
+        Her iki modda da PRIMARY READ hemen çalışır — çünkü primary yazdı,
+        primary okudu. Secondary'de stale olabilir ama bu test primary okur.
+        Deneyin odağı: "secondary yerine primary oku = her zaman taze veri".
+
+    Ne kanıtlar:
+        - Yazma → primary okuma arasında SIFIR gecikme
+        - get_open_incidents() severity=critical incident'ı döndürür
+        - incidents koleksiyonu için target_collection=incidents log'da var
+    """
     section("Test 5: Incidents — Read-After-Write Experiment")
 
     inc_id, delay = operations.insert_incident(
@@ -239,7 +353,109 @@ def test_incident_read_after_write():
 # Test 6 — Cross-collection operation log: target_collection field
 # ---------------------------------------------------------------------------
 
+def test_async_eventual_consistency():
+    """Test 6b — Eventual Consistency: w=1 ile secondary geride kalabilir
+
+    Ne yapar:
+        1. Write concern'i w=1 (async) yapar.
+        2. Positions'a 5 hızlı GPS yazısı gönderir — primary anında döner,
+           secondary'nin onayını BEKLEMEZ.
+        3. Her yazının HEMEN ARDINDA secondary'de o dokümanın var olup
+           olmadığını kontrol eder ("stale read" penceresi).
+        4. Tüm yazılar bittikten sonra 2 saniye bekler ve secondary'nin
+           eventually tüm dokümanları yakalayıp yakalamadığını doğrular.
+        5. Write concern'i w=majority'ye geri alır.
+
+    Eventual Consistency garantisi nedir:
+        "Yeterince beklenirse secondary primary ile aynı duruma gelir."
+        Bu test tam olarak bunu ölçer:
+        - HEMEN okuma → stale (bazı dokümanlar yok olabilir)  [beklenen]
+        - 2 saniye sonra okuma → tüm dokümanlar var           [garanti]
+
+    w=majority ile farkı:
+        w=majority modunda primary "tamam" demeden önce secondary onaylar,
+        yani "stale read penceresi" sıfırdır — eventual consistency GÖRÜNMEZ.
+        w=1 bu pencereyi açar ve gözlemlenebilir kılar.
+
+    Raporda nasıl kullanılır:
+        "w=1 ile yazılan 5 GPS kaydının secondary'de görünme süresi:
+        bazıları anında, bazıları ~Xms gecikmeyle replike edildi.
+        2 saniye sonra tüm kayıtlar secondary'de mevcuttu (eventual consistency)."
+    """
+    section("Test 6b: Async w=1 — Eventual Consistency Window")
+
+    import operations as ops
+
+    # w=1'e geç
+    ops.set_write_concern(1)
+    console.print("  [dim]Write concern → w=1 (async)[/dim]")
+
+    ids = []
+    stale_count = 0
+
+    for i in range(5):
+        pid, delay = ops.insert_position(
+            "EC-TEST",
+            lat=40.0 + i * 0.01, lng=33.0 + i * 0.01,
+            city="Ankara", district="EC-Test",
+            speed_kmh=50 + i,
+        )
+        ids.append(pid)
+
+        # w=1: delay=None beklenir (fire-and-forget)
+        if delay is None:
+            pass  # beklenen davranış
+
+        # Anında secondary'den oku — stale olabilir
+        doc = db.get_secondary()["positions"].find_one({"_id": pid})
+        if doc is None:
+            stale_count += 1
+
+    # Stale gözlemlemek "eventual consistency" için gerekli kanıt
+    if stale_count > 0:
+        ok(f"Stale read observed: {stale_count}/5 docs not yet on secondary right after w=1 write",
+           "eventual consistency window is visible")
+    else:
+        console.print("  [dim]Note: all 5 docs already replicated (network is very fast today)[/dim]")
+        ok("w=1 writes completed (no stale observed — secondary caught up instantly)", "still valid")
+
+    # Eventual guarantee: 2 saniye sonra hepsi gelmeli
+    time.sleep(2)
+    missing = sum(1 for pid in ids if not db.get_secondary()["positions"].find_one({"_id": pid}))
+    if missing == 0:
+        ok("After 2s: all 5 docs present on secondary — eventual consistency satisfied")
+    else:
+        fail(f"After 2s: {missing}/5 docs still missing on secondary")
+
+    # w=majority'ye geri al
+    ops.set_write_concern("majority")
+    console.print("  [dim]Write concern → w=majority (restored)[/dim]")
+
+
 def test_operation_log_collection_field():
+    """Test 6 — operation_logs.target_collection doğru kaydediliyor mu?
+
+    Ne yapar:
+        vehicles, drivers ve positions koleksiyonlarına birer insert yapar.
+        operation_logs'da bu insertlere ait kayıtların target_collection
+        alanının doğru koleksiyon adını içerdiğini doğrular.
+
+    Neden önemli:
+        Sistemimiz 6 koleksiyon için tek bir operation_logs tutar. Reconciler
+        (background thread) pending log'ları tamamlamak için hangi koleksiyona
+        bakacağını target_collection'dan öğrenir. Bu alan yanlışsa reconciler
+        yanlış koleksiyonu sorgular → stale log'lar asla kapanmaz →
+        pending_count sürekli artar.
+
+        Bu test, multi-collection routing'in merkezi meta-data sütununun
+        doğru çalıştığını garanti eder.
+
+    Akademik önem:
+        DDIA (Designing Data-Intensive Applications) Bölüm 5'teki replication
+        log konseptinin direkt uygulaması. Her yazı operasyonu log_index ile
+        sıralanır, target_collection ile yönlendirilir — tıpkı WAL (Write-Ahead
+        Log) yapısındaki page ve offset kavramları gibi.
+    """
     section("Test 6: Operation Logs — target_collection Field")
 
     # Insert one doc into each fleet collection
@@ -320,6 +536,7 @@ def main():
     test_shipment_monotonic_reads()
     test_position_burst(n=10)
     test_incident_read_after_write()
+    test_async_eventual_consistency()   # w=1 async — eventual consistency gözlemle
     test_operation_log_collection_field()
 
     failed = print_summary()

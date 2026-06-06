@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Consistency Experiments — CENG465</title>
+<style>
+/* ── Reset & Base ─────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:        #0d1117;
+  --bg2:       #161b22;
+  --bg3:       #21262d;
+  --border:    #30363d;
+  --text:      #c9d1d9;
+  --muted:     #8b949e;
+  --green:     #3fb950;
+  --blue:      #58a6ff;
+  --orange:    #f0883e;
+  --red:       #f85149;
+  --purple:    #a371f7;
+  --yellow:    #e3b341;
+  --white:     #e6edf3;
+  --radius:    8px;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+/* ── Header ───────────────────────────────────────────────────── */
+.header {
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  padding: 0 24px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.header-title { font-weight: 700; font-size: 15px; color: var(--white); }
+.header-sub   { color: var(--muted); font-size: 12px; }
+.header-sep   { flex: 1; }
+.header-link  {
+  color: var(--blue);
+  text-decoration: none;
+  font-size: 12px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  transition: background .15s;
+}
+.header-link:hover { background: var(--bg3); }
+
+/* ── Layout ───────────────────────────────────────────────────── */
+.layout {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 0;
+  height: calc(100vh - 52px);
+}
+.sidebar {
+  background: var(--bg2);
+  border-right: 1px solid var(--border);
+  padding: 20px 16px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.main {
+  padding: 24px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* ── Experiment Cards ─────────────────────────────────────────── */
+.exp-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  background: var(--bg3);
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+  position: relative;
+}
+.exp-card:hover       { border-color: var(--blue); background: #1c2433; }
+.exp-card.active      { border-color: var(--blue); background: #1c2433; }
+.exp-card.running     { border-color: var(--yellow); }
+.exp-card.done        { border-color: var(--green); }
+.exp-card.done.stale  { border-color: var(--red); }
+
+.exp-card-title {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--white);
+  margin-bottom: 4px;
+}
+.exp-card-desc {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.exp-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 12px;
+  margin-top: 8px;
+}
+.badge-sync    { background: rgba(63,185,80,.15);  color: var(--green);  }
+.badge-async   { background: rgba(240,136,62,.15); color: var(--orange); }
+.badge-primary { background: rgba(88,166,255,.15); color: var(--blue);   }
+.badge-mono    { background: rgba(163,113,247,.15);color: var(--purple); }
+
+.run-btn {
+  width: 100%;
+  margin-top: 10px;
+  padding: 8px;
+  border: none;
+  border-radius: 6px;
+  background: var(--blue);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity .15s;
+}
+.run-btn:hover    { opacity: .85; }
+.run-btn:disabled { opacity: .5; cursor: not-allowed; }
+.run-btn.running  { background: var(--yellow); color: #000; }
+
+/* ── Welcome ──────────────────────────────────────────────────── */
+.welcome {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 32px;
+  text-align: center;
+  color: var(--muted);
+}
+.welcome h2 { color: var(--white); margin-bottom: 8px; }
+.welcome p  { max-width: 480px; margin: 0 auto; }
+
+/* ── Result Panel ─────────────────────────────────────────────── */
+.result-panel { display: flex; flex-direction: column; gap: 20px; }
+
+.panel-box {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.panel-header {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--white);
+  background: var(--bg3);
+}
+.panel-body { padding: 0; }
+
+/* ── Verdict ──────────────────────────────────────────────────── */
+.verdict-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.verdict-badge {
+  font-size: 14px;
+  font-weight: 700;
+  padding: 6px 16px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+.verdict-ok      { background: rgba(63,185,80,.2);  color: var(--green); border: 1px solid var(--green); }
+.verdict-fail    { background: rgba(248,81,73,.2);  color: var(--red);   border: 1px solid var(--red); }
+.verdict-partial { background: rgba(227,179,65,.2); color: var(--yellow);border: 1px solid var(--yellow); }
+
+.verdict-stats {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+.stat-item { display: flex; flex-direction: column; gap: 2px; }
+.stat-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+.stat-value { font-size: 14px; font-weight: 600; color: var(--white); font-family: monospace; }
+.stat-value.green  { color: var(--green); }
+.stat-value.red    { color: var(--red); }
+.stat-value.orange { color: var(--orange); }
+.stat-value.blue   { color: var(--blue); }
+
+/* ── Timeline SVG ─────────────────────────────────────────────── */
+.timeline-container {
+  padding: 0;
+  overflow-x: auto;
+}
+.timeline-svg-wrap {
+  min-width: 700px;
+  padding: 16px 20px 20px;
+}
+
+/* ── Event Table ──────────────────────────────────────────────── */
+.event-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  font-family: monospace;
+}
+.event-table th {
+  padding: 7px 12px;
+  background: var(--bg3);
+  color: var(--muted);
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.event-table td {
+  padding: 6px 12px;
+  border-bottom: 1px solid rgba(48,54,61,.5);
+  color: var(--text);
+  white-space: nowrap;
+}
+.event-table tr:last-child td { border-bottom: none; }
+.event-table tr:hover td { background: rgba(48,54,61,.4); }
+
+/* actor pills */
+.actor-pill {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+}
+.actor-client    { background: rgba(230,237,243,.1); color: var(--white); }
+.actor-primary   { background: rgba(63,185,80,.15);  color: var(--green); }
+.actor-secondary { background: rgba(88,166,255,.15); color: var(--blue);  }
+
+/* type pills */
+.type-write         { color: var(--blue); }
+.type-replicate     { color: var(--orange); }
+.type-ack           { color: var(--muted); }
+.type-ok            { color: var(--green); }
+.type-read          { color: var(--purple); }
+.type-stale_response{ color: var(--red); font-weight: 700; }
+.type-fresh_response{ color: var(--green); }
+.type-waiting       { color: var(--yellow); }
+
+/* ── Log Collapsible ──────────────────────────────────────────── */
+details summary {
+  cursor: pointer;
+  padding: 10px 16px;
+  background: var(--bg3);
+  font-size: 11px;
+  color: var(--muted);
+  user-select: none;
+}
+details summary:hover { color: var(--text); }
+.log-pre {
+  margin: 0;
+  padding: 12px 16px;
+  font-size: 11px;
+  font-family: monospace;
+  color: var(--muted);
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ── Spinner ──────────────────────────────────────────────────── */
+.spinner {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border: 2px solid var(--border);
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<header class="header">
+  <span class="header-title">🔬 Consistency Experiments</span>
+  <span class="header-sub">CENG465 — Single-Leader Replication Demo</span>
+  <span class="header-sep"></span>
+  <a class="header-link" href="/">← Dashboard</a>
+</header>
+
+<div class="layout">
+
+  <!-- ── Sidebar: experiment cards ──────────────────────────── -->
+  <aside class="sidebar">
+
+    <div style="font-size:11px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px;">
+      Experiments
+    </div>
+
+    <!-- 1. Synchronous Replication -->
+    <div class="exp-card" id="card-sync_replication" onclick="selectExperiment('sync_replication')">
+      <div class="exp-card-title">① Synchronous Replication</div>
+      <div class="exp-card-desc">w=majority — primary follower ACK'ini bekler, istemci sonra cevap alır</div>
+      <span class="exp-badge badge-sync">w = majority</span>
+      <button class="run-btn" id="btn-sync_replication"
+              onclick="event.stopPropagation(); runExperiment('sync_replication')">
+        ▶ Run
+      </button>
+    </div>
+
+    <!-- 2. Eventual Consistency -->
+    <div class="exp-card" id="card-eventual_consistency" onclick="selectExperiment('eventual_consistency')">
+      <div class="exp-card-title">② Eventual Consistency</div>
+      <div class="exp-card-desc">w=1 — primary hemen döner, secondary async olarak güncellenir, stale read gözlemlenir</div>
+      <span class="exp-badge badge-async">w = 1 (async)</span>
+      <button class="run-btn" id="btn-eventual_consistency"
+              onclick="event.stopPropagation(); runExperiment('eventual_consistency')">
+        ▶ Run
+      </button>
+    </div>
+
+    <!-- 3. Read-After-Write -->
+    <div class="exp-card" id="card-read_after_write" onclick="selectExperiment('read_after_write')">
+      <div class="exp-card-title">③ Read-After-Write</div>
+      <div class="exp-card-desc">Kullanıcı yazdığını primary'den anında okur — secondary'den stale gelebilir</div>
+      <span class="exp-badge badge-primary">PRIMARY read</span>
+      <button class="run-btn" id="btn-read_after_write"
+              onclick="event.stopPropagation(); runExperiment('read_after_write')">
+        ▶ Run
+      </button>
+    </div>
+
+    <!-- 4. Monotonic Reads -->
+    <div class="exp-card" id="card-monotonic_reads" onclick="selectExperiment('monotonic_reads')">
+      <div class="exp-card-title">④ Monotonic Reads</div>
+      <div class="exp-card-desc">Secondary'den ardışık okumalar asla önceki versiyona geri dönemez</div>
+      <span class="exp-badge badge-mono">version order</span>
+      <button class="run-btn" id="btn-monotonic_reads"
+              onclick="event.stopPropagation(); runExperiment('monotonic_reads')">
+        ▶ Run
+      </button>
+    </div>
+
+    <div style="margin-top:auto;font-size:10px;color:var(--muted);line-height:1.5">
+      PRIMARY: <span style="color:var(--green)">192.168.88.30</span><br>
+      SECONDARY: <span style="color:var(--blue)">192.168.88.70</span><br>
+      Replica Set: <span style="color:var(--white)">rs0</span>
+    </div>
+  </aside>
+
+  <!-- ── Main: timeline + results ───────────────────────────── -->
+  <main class="main" id="main-area">
+
+    <div class="welcome" id="welcome-msg">
+      <h2>Select an Experiment</h2>
+      <p>Sol panelden bir consistency deneyi seçin ve <strong>▶ Run</strong> butonuna tıklayın.<br>
+         Sonuçlar DDIA-style timeline diyagramı ile görselleştirilecek.</p>
+    </div>
+
+  </main>
+</div>
+
+<!-- ── SVG Timeline Drawing Engine ──────────────────────────────── -->
+<script>
+/* ── Constants ────────────────────────────────────────────────── */
+const ACTOR_CFG = {
+  client:    { label: 'Client / Dashboard',           color: '#e6edf3', ip: '(control node)' },
+  primary:   { label: 'PRIMARY',  color: '#3fb950', ip: '192.168.88.30' },
+  secondary: { label: 'SECONDARY',color: '#58a6ff', ip: '192.168.88.70' },
+};
+const ACTORS = ['client', 'primary', 'secondary'];
+
+const EVENT_COLORS = {
+  write:          '#58a6ff',
+  replicate:      '#f0883e',
+  ack:            '#8b949e',
+  ok:             '#3fb950',
+  read:           '#a371f7',
+  stale_response: '#f85149',
+  fresh_response: '#3fb950',
+  waiting:        '#e3b341',
+};
+
+let currentExperiment = null;
+
+/* ── Experiment selector ──────────────────────────────────────── */
+function selectExperiment(name) {
+  document.querySelectorAll('.exp-card').forEach(c => c.classList.remove('active'));
+  const card = document.getElementById('card-' + name);
+  if (card) card.classList.add('active');
+  currentExperiment = name;
+}
+
+/* ── Run experiment ───────────────────────────────────────────── */
+async function runExperiment(name) {
+  selectExperiment(name);
+  const btn = document.getElementById('btn-' + name);
+  const card = document.getElementById('card-' + name);
+  btn.disabled = true;
+  btn.classList.add('running');
+  btn.textContent = '⏳ Running…';
+  card.classList.add('running');
+
+  // Show loading state in main
+  showLoading(name);
+
+  try {
+    const res = await fetch('/api/experiment/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ experiment: name }),
+    });
+    const json = await res.json();
+
+    btn.classList.remove('running');
+    btn.disabled = false;
+    btn.textContent = '▶ Run Again';
+    card.classList.remove('running');
+
+    if (!json.ok) {
+      showError(json.error || 'Unknown error');
+      return;
+    }
+
+    const achieved = json.result.summary?.consistency_achieved;
+    const stale    = json.result.summary?.stale_read_observed;
+    card.classList.add('done');
+    if (stale) card.classList.add('stale'); else card.classList.remove('stale');
+
+    renderResult(json.result);
+
+  } catch (e) {
+    btn.classList.remove('running');
+    btn.disabled = false;
+    btn.textContent = '▶ Run';
+    showError(e.message);
+  }
+}
+
+/* ── Loading state ────────────────────────────────────────────── */
+function showLoading(name) {
+  const main = document.getElementById('main-area');
+  main.innerHTML = `
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;
+                height:300px;gap:16px;color:var(--muted)">
+      <div class="spinner" style="width:32px;height:32px;border-width:3px"></div>
+      <div>Running <strong style="color:var(--white)">${name.replace(/_/g,' ')}</strong>…</div>
+      <div style="font-size:11px">Connecting to PRIMARY &amp; SECONDARY…</div>
+    </div>`;
+}
+
+function showError(msg) {
+  document.getElementById('main-area').innerHTML = `
+    <div style="background:rgba(248,81,73,.1);border:1px solid var(--red);
+                border-radius:8px;padding:20px;color:var(--red)">
+      <strong>Error:</strong> ${escHtml(msg)}
+    </div>`;
+}
+
+/* ── Main renderer ────────────────────────────────────────────── */
+function renderResult(result) {
+  const main = document.getElementById('main-area');
+
+  const summary   = result.summary || {};
+  const events    = result.events  || [];
+  const log       = result.log;
+  const reads     = result.reads;
+  const achieved  = summary.consistency_achieved;
+  const stale     = summary.stale_read_observed;
+
+  // Verdict text
+  let verdictClass = achieved ? 'verdict-ok' : 'verdict-fail';
+  let verdictText  = achieved ? '✓ CONSISTENCY SATISFIED' : '✗ CONSISTENCY VIOLATED';
+  if (stale && achieved) {
+    verdictClass = 'verdict-partial';
+    verdictText  = '⚡ EVENTUAL — stale read observed, eventually consistent';
+  }
+
+  // Summary stats
+  const statRows = buildStatRows(summary, result.experiment);
+
+  // Verdict HTML
+  const verdictHtml = `
+    <div class="verdict-row">
+      <div class="verdict-badge ${verdictClass}">${verdictText}</div>
+      <div class="verdict-stats">${statRows}</div>
+    </div>`;
+
+  // Build events table
+  const evTableRows = events
+    .filter(e => e.from !== e.to)
+    .map(e => `
+      <tr>
+        <td style="color:var(--muted)">${e.t_ms.toFixed(1)}</td>
+        <td><span class="actor-pill actor-${e.from}">${e.from}</span></td>
+        <td style="color:var(--muted)">→</td>
+        <td><span class="actor-pill actor-${e.to}">${e.to}</span></td>
+        <td class="type-${e.type}" style="font-weight:600">${e.type}</td>
+        <td>${escHtml(e.label)}</td>
+        <td style="color:var(--muted)">${e.latency_ms != null ? e.latency_ms.toFixed(1)+'ms' : '—'}</td>
+      </tr>
+    `).join('');
+
+  // Log JSON
+  const logHtml = log ? `
+    <details>
+      <summary>Operation Log Entry (from operation_logs)</summary>
+      <pre class="log-pre">${escHtml(JSON.stringify(log, null, 2))}</pre>
+    </details>` : '';
+
+  // Monotonic reads table (if applicable)
+  const readsHtml = reads ? buildReadsTable(reads) : '';
+
+  main.innerHTML = `
+    <div class="result-panel">
+
+      <!-- Title -->
+      <div style="display:flex;align-items:center;gap:12px">
+        <h2 style="font-size:16px;color:var(--white)">${escHtml(result.title)}</h2>
+        <span style="font-size:12px;color:var(--muted)">${escHtml(result.description)}</span>
+      </div>
+
+      <!-- Verdict + Stats -->
+      <div class="panel-box">
+        <div class="panel-header">
+          📊 Experiment Result
+          <span style="margin-left:auto;font-size:11px;color:var(--muted)">
+            Model: <strong style="color:var(--white)">${escHtml(summary.consistency_model || '—')}</strong>
+            &nbsp;·&nbsp;
+            w = <strong style="color:var(--orange)">${escHtml(String(summary.write_concern || '—'))}</strong>
+          </span>
+        </div>
+        <div class="panel-body">${verdictHtml}</div>
+      </div>
+
+      <!-- Timeline SVG -->
+      <div class="panel-box">
+        <div class="panel-header">
+          🕐 Communication Timeline
+          <span style="margin-left:auto;font-size:10px;color:var(--muted)">
+            (time flows left → right; arrows show inter-machine messages)
+          </span>
+        </div>
+        <div class="timeline-container">
+          <div class="timeline-svg-wrap" id="timeline-wrap"></div>
+        </div>
+      </div>
+
+      ${readsHtml}
+
+      <!-- Event log table -->
+      <div class="panel-box">
+        <div class="panel-header">📋 Event Log</div>
+        <div class="panel-body">
+          <table class="event-table">
+            <thead>
+              <tr>
+                <th>t (ms)</th>
+                <th>From</th>
+                <th></th>
+                <th>To</th>
+                <th>Type</th>
+                <th>Label</th>
+                <th>Latency</th>
+              </tr>
+            </thead>
+            <tbody>${evTableRows}</tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Raw log -->
+      ${logHtml}
+
+    </div>`;
+
+  // Draw the SVG after DOM is ready
+  requestAnimationFrame(() => drawTimeline('timeline-wrap', events));
+}
+
+/* ── Stats helper ─────────────────────────────────────────────── */
+function buildStatRows(s, expName) {
+  const rows = [];
+  const stat = (label, value, cls='') =>
+    `<div class="stat-item">
+       <div class="stat-label">${label}</div>
+       <div class="stat-value ${cls}">${value}</div>
+     </div>`;
+
+  if (s.write_returned_ms   != null) rows.push(stat('Write returned', s.write_returned_ms.toFixed(1) + ' ms', 'blue'));
+  if (s.replication_delay_ms!= null) rows.push(stat('Repl. delay',   s.replication_delay_ms.toFixed(1)+ ' ms', 'orange'));
+  if (s.primary_read_ms     != null) rows.push(stat('Primary read',  s.primary_read_ms.toFixed(1)    + ' ms', 'green'));
+  if (s.consistency_window_ms!=null) rows.push(stat('Consistency window', s.consistency_window_ms.toFixed(1)+' ms', 'orange'));
+  if (s.version_after       != null) rows.push(stat('Version after', 'v' + s.version_after, 'white'));
+  if (s.final_version       != null) rows.push(stat('Final version', 'v' + s.final_version, 'white'));
+
+  if (s.stale_read_observed != null)
+    rows.push(stat('Stale read', s.stale_read_observed ? 'YES ⚡' : 'NO ✓',
+                   s.stale_read_observed ? 'red' : 'green'));
+
+  if (s.primary_fresh != null)
+    rows.push(stat('Primary read', s.primary_fresh ? 'FRESH ✓' : 'STALE ⚡',
+                   s.primary_fresh ? 'green' : 'red'));
+
+  if (s.secondary_fresh != null)
+    rows.push(stat('Secondary read', s.secondary_fresh ? 'FRESH ✓' : 'STALE ⚡',
+                   s.secondary_fresh ? 'green' : 'red'));
+
+  if (s.versions_seen && s.versions_seen.length)
+    rows.push(stat('Versions seen', s.versions_seen.map(v=>'v'+v).join(' → '), 'purple'));
+
+  if (s.monotonic != null)
+    rows.push(stat('Monotonic', s.monotonic ? 'YES ✓' : 'VIOLATED ✗',
+                   s.monotonic ? 'green' : 'red'));
+
+  return rows.join('');
+}
+
+/* ── Monotonic reads table ────────────────────────────────────── */
+function buildReadsTable(reads) {
+  const rows = reads.map((r, i) => `
+    <tr>
+      <td style="color:var(--muted)">#${i+1}</td>
+      <td>${r.t_ms.toFixed(1)} ms</td>
+      <td style="color:var(--purple)">${r.version != null ? 'v' + r.version : '<span style="color:var(--red)">—</span>'}</td>
+      <td>${r.status || '—'}</td>
+    </tr>`).join('');
+
+  return `
+    <div class="panel-box">
+      <div class="panel-header">🔢 Secondary Read Sequence (Monotonic Check)</div>
+      <div class="panel-body">
+        <table class="event-table">
+          <thead><tr><th>#</th><th>Time</th><th>Version</th><th>Status</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   SVG Timeline Drawing Engine
+   ══════════════════════════════════════════════════════════════ */
+
+function drawTimeline(containerId, events) {
+  const wrap = document.getElementById(containerId);
+  if (!wrap) return;
+
+  const W        = Math.max(wrap.clientWidth || 760, 760);
+  const TRACK_H  = 120;   // vertical distance between tracks
+  const PAD_TOP  = 30;
+  const PAD_BOT  = 50;    // space for time axis
+  const LAB_W    = 148;   // left label area
+  const PAD_R    = 24;
+  const CHART_W  = W - LAB_W - PAD_R;
+  const H        = PAD_TOP + TRACK_H * (ACTORS.length - 1) + PAD_TOP + PAD_BOT + 10;
+
+  // Y positions per actor
+  const actorY = {};
+  ACTORS.forEach((a, i) => { actorY[a] = PAD_TOP + i * TRACK_H; });
+
+  // Filter events that cross actors
+  const arrowEvents = events.filter(e => e.from !== e.to && actorY[e.from] !== undefined && actorY[e.to] !== undefined);
+  const waitEvents  = events.filter(e => e.from === e.to && e.type === 'waiting');
+
+  // Collect all time points to determine scale
+  const allT = [];
+  arrowEvents.forEach(e => {
+    allT.push(e.t_ms);
+    allT.push(e.t_ms + (e.latency_ms || 5));
+  });
+  waitEvents.forEach(e => allT.push(e.t_ms));
+
+  const maxT = Math.max(...allT, 1);
+
+  // Build x-positions with minimum spacing enforcement
+  // We collect distinct t values, sort them, enforce minGap, then interpolate
+  const MIN_SLOT_PX = 65;
+  const rawTimes    = [...new Set(allT)].sort((a, b) => a - b);
+  const slotX       = buildSlots(rawTimes, CHART_W, MIN_SLOT_PX);
+  const toPx        = (t) => LAB_W + interpolateSlot(t, rawTimes, slotX);
+
+  // SVG parts
+  let defs = '';
+  let body = '';
+
+  // Arrowhead markers per color
+  const colorSet = new Set(arrowEvents.map(e => EVENT_COLORS[e.type] || '#8b949e'));
+  const colorArr = [...colorSet];
+  colorArr.forEach((color, i) => {
+    defs += `
+      <marker id="arr${i}" markerWidth="8" markerHeight="6"
+              refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+        <polygon points="0 0, 8 3, 0 6" fill="${color}" opacity=".9"/>
+      </marker>`;
+  });
+  const colorToMarker = {};
+  colorArr.forEach((c, i) => { colorToMarker[c] = `arr${i}`; });
+
+  // Actor baselines + labels
+  ACTORS.forEach(name => {
+    const cfg = ACTOR_CFG[name];
+    const y   = actorY[name];
+
+    // Label (left side)
+    body += `
+      <text x="${LAB_W - 10}" y="${y - 6}" text-anchor="end"
+            font-family="monospace" font-size="11" font-weight="700"
+            fill="${cfg.color}">${escSvg(cfg.label)}</text>
+      <text x="${LAB_W - 10}" y="${y + 6}" text-anchor="end"
+            font-family="monospace" font-size="9" fill="${cfg.color}" opacity=".6"
+            >${escSvg(cfg.ip)}</text>`;
+
+    // Dashed baseline
+    body += `
+      <line x1="${LAB_W}" y1="${y}" x2="${W - PAD_R}" y2="${y}"
+            stroke="${cfg.color}" stroke-width="1" stroke-dasharray="5,5" opacity=".25"/>`;
+  });
+
+  // Time axis
+  const axisY = PAD_TOP + (ACTORS.length - 1) * TRACK_H + 40;
+  body += `
+    <line x1="${LAB_W}" y1="${axisY}" x2="${W - PAD_R}" y2="${axisY}"
+          stroke="#30363d" stroke-width="1"/>
+    <text x="${W - PAD_R - 2}" y="${axisY + 12}" font-size="9" fill="#8b949e"
+          text-anchor="end" font-family="monospace">t (ms) →</text>`;
+
+  // Time ticks (a subset of rawTimes)
+  const tickInterval = Math.ceil(rawTimes.length / 8);
+  rawTimes.forEach((t, idx) => {
+    if (idx % tickInterval !== 0 && idx !== rawTimes.length - 1) return;
+    const x = toPx(t);
+    body += `
+      <line x1="${x}" y1="${axisY}" x2="${x}" y2="${axisY - 5}"
+            stroke="#8b949e" stroke-width="0.5"/>
+      <text x="${x}" y="${axisY + 12}" font-size="8" fill="#8b949e"
+            text-anchor="middle" font-family="monospace">${t.toFixed(0)}</text>`;
+  });
+
+  // "Waiting" bars on primary
+  waitEvents.forEach(e => {
+    const y   = actorY[e.from];
+    const x1  = toPx(e.t_ms);
+    const x2  = toPx(maxT);
+    body += `
+      <rect x="${x1}" y="${y - 6}" width="${x2 - x1}" height="12"
+            fill="rgba(227,179,65,.08)" stroke="#e3b341" stroke-width="0.8"
+            stroke-dasharray="3,3" rx="3"/>
+      <text x="${x1 + 6}" y="${y + 4}" font-size="9" fill="#e3b341"
+            font-family="monospace">${escSvg(e.label)}</text>`;
+  });
+
+  // Arrow events
+  arrowEvents.forEach(e => {
+    const color    = EVENT_COLORS[e.type] || '#8b949e';
+    const markerId = colorToMarker[color];
+    const isDashed = e.type === 'replicate';
+
+    const x1 = toPx(e.t_ms);
+    const y1 = actorY[e.from];
+    const x2 = toPx(e.t_ms + (e.latency_ms || 5));
+    const y2 = actorY[e.to];
+
+    const dashAttr = isDashed ? 'stroke-dasharray="7,4"' : '';
+
+    // Arrow line
+    body += `
+      <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"
+            stroke="${color}" stroke-width="1.6" ${dashAttr}
+            marker-end="url(#${markerId})" opacity=".9"/>`;
+
+    // Dot at send point
+    body += `<circle cx="${x1}" cy="${y1}" r="3" fill="${color}" opacity=".7"/>`;
+
+    // Label
+    const mx = (x1 + x2) / 2;
+    const my = (y1 + y2) / 2;
+    const goingDown = y2 > y1;
+
+    // Perpendicular offset for label
+    const angle = Math.atan2(y2 - y1, x2 - x1);
+    const perpX = -Math.sin(angle) * 10;
+    const perpY =  Math.cos(angle) * 10;
+    const lx = mx + perpX + (goingDown ? 4 : -4);
+    const ly = my + perpY;
+    const anchor = goingDown ? 'start' : 'end';
+
+    body += `
+      <text x="${lx}" y="${ly}" font-size="9.5" fill="${color}"
+            text-anchor="${anchor}" font-family="monospace" font-weight="600"
+            >${escSvg(e.label)}</text>`;
+
+    // Stale: dashed red box around receive point
+    if (e.type === 'stale_response') {
+      const bw = Math.max(e.label.length * 5.5 + 10, 80);
+      body += `
+        <rect x="${x2 - 4}" y="${y2 - 10}" width="${bw}" height="20"
+              fill="rgba(248,81,73,.07)" stroke="#f85149" stroke-width="1"
+              stroke-dasharray="3,2" rx="3"/>`;
+    }
+
+    // Fresh: green checkmark dot at receive point
+    if (e.type === 'fresh_response') {
+      body += `<circle cx="${x2}" cy="${y2}" r="4" fill="none" stroke="#3fb950" stroke-width="1.5"/>`;
+    }
+
+    // Time label at origin tick
+    body += `
+      <line x1="${x1}" y1="${axisY}" x2="${x1}" y2="${axisY - 3}"
+            stroke="${color}" stroke-width="0.8" opacity=".5"/>`;
+  });
+
+  // Legend
+  const legendItems = [
+    { color: EVENT_COLORS.write,          label: 'write' },
+    { color: EVENT_COLORS.replicate,      label: 'oplog replication', dashed: true },
+    { color: EVENT_COLORS.ack,            label: 'ACK' },
+    { color: EVENT_COLORS.ok,             label: 'ok / response' },
+    { color: EVENT_COLORS.read,           label: 'read request' },
+    { color: EVENT_COLORS.stale_response, label: 'stale response' },
+    { color: EVENT_COLORS.fresh_response, label: 'fresh response' },
+  ];
+  const legendY = H - 8;
+  let lx = LAB_W;
+  legendItems.forEach(item => {
+    const dash = item.dashed ? 'stroke-dasharray="5,3"' : '';
+    body += `
+      <line x1="${lx}" y1="${legendY}" x2="${lx + 18}" y2="${legendY}"
+            stroke="${item.color}" stroke-width="2" ${dash}/>
+      <text x="${lx + 22}" y="${legendY + 4}" font-size="9" fill="${item.color}"
+            font-family="monospace">${item.label}</text>`;
+    lx += item.label.length * 6 + 32;
+    if (lx > W - 60) lx = LAB_W; // wrap (simplified)
+  });
+
+  const finalH = H + 20;
+  wrap.innerHTML = `
+    <svg xmlns="http://www.w3.org/2000/svg"
+         width="${W}" height="${finalH}"
+         style="background:transparent;display:block;">
+      <defs>${defs}</defs>
+      ${body}
+    </svg>`;
+}
+
+/* ── Slot helpers ─────────────────────────────────────────────── */
+
+/**
+ * Given sorted rawTimes and chart width, return x-offsets (from 0) with
+ * minimum MIN_GAP_PX between consecutive slots.
+ */
+function buildSlots(sortedTimes, chartW, minGapPx) {
+  if (sortedTimes.length === 0) return [];
+  const maxT = sortedTimes[sortedTimes.length - 1] || 1;
+
+  // Natural positions
+  const natural = sortedTimes.map(t => (t / maxT) * chartW);
+
+  // Enforce minimum gap (forward pass)
+  const positions = [...natural];
+  for (let i = 1; i < positions.length; i++) {
+    if (positions[i] - positions[i - 1] < minGapPx) {
+      positions[i] = positions[i - 1] + minGapPx;
+    }
+  }
+
+  // Scale back to fit chartW (backward pass to rescale if overflow)
+  const totalNeeded = positions[positions.length - 1];
+  if (totalNeeded > chartW) {
+    const scale = chartW / totalNeeded;
+    for (let i = 0; i < positions.length; i++) {
+      positions[i] *= scale;
+    }
+  }
+
+  return positions;
+}
+
+/**
+ * For a given time t (possibly not in rawTimes), interpolate its x-offset.
+ */
+function interpolateSlot(t, rawTimes, slotX) {
+  if (rawTimes.length === 0) return 0;
+  if (t <= rawTimes[0]) return slotX[0] || 0;
+  if (t >= rawTimes[rawTimes.length - 1]) return slotX[slotX.length - 1] || 0;
+
+  // Binary search for bracketing interval
+  let lo = 0, hi = rawTimes.length - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (rawTimes[mid] <= t) lo = mid; else hi = mid;
+  }
+
+  const t0 = rawTimes[lo], t1 = rawTimes[hi];
+  const x0 = slotX[lo],    x1 = slotX[hi];
+  if (t1 === t0) return x0;
+  return x0 + (t - t0) / (t1 - t0) * (x1 - x0);
+}
+
+/* ── Escape helpers ───────────────────────────────────────────── */
+function escSvg(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+function escHtml(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+</script>
+</body>
+</html>

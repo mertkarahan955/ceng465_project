@@ -12,6 +12,7 @@ from pymongo.errors import PyMongoError
 import db
 import operations
 from operations import insert_item, update_item, delete_item
+import experiment_runner
 
 app = Flask(__name__)
 
@@ -303,6 +304,36 @@ def api_open_incidents():
         return jsonify({"ok": True, "source": "primary", "data": _serialize_list(docs)})
     except PyMongoError as e:
         return jsonify({"ok": False, "source": "primary", "error": str(e), "data": []}), 200
+
+
+# ---------------------------------------------------------------------------
+# Consistency Experiment Runner
+# ---------------------------------------------------------------------------
+
+@app.route("/experiments")
+def experiments_page():
+    """Dedicated experiment runner with DDIA-style timeline visualization."""
+    return render_template("experiments.html")
+
+
+@app.route("/api/experiment/run", methods=["POST"])
+def api_run_experiment():
+    """Run a named consistency experiment and return timeline event data.
+
+    Body: { "experiment": "sync_replication" | "eventual_consistency"
+                          | "read_after_write" | "monotonic_reads" }
+    """
+    name = (request.json or {}).get("experiment")
+    if not name:
+        return jsonify({"ok": False, "error": "Missing 'experiment' field"}), 400
+    try:
+        result = experiment_runner.run_experiment(name)
+        return jsonify({"ok": True, "result": result})
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    except Exception as e:
+        import traceback
+        return jsonify({"ok": False, "error": str(e), "trace": traceback.format_exc()}), 500
 
 
 # ---------------------------------------------------------------------------
