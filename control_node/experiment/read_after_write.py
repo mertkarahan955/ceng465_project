@@ -2,6 +2,7 @@
 
 import time
 
+import config
 import db
 import operations
 
@@ -19,9 +20,13 @@ from .common import (
 
 
 def run_read_after_write():
-    """RAW consistency — single user, two read paths."""
-    net_p = measure_net_one_way(db.get_primary)
-    net_s = measure_net_one_way(db.get_secondary)
+    """RAW consistency — single user, two read paths.
+
+    Every arrow pair uses req_resp_events so all messages show the
+    N_/ (N=network) shape:  request departs → arrives → (processing) → departs → arrives.
+    """
+    net_p = measure_net_one_way(db.get_primary,   config.PRIMARY_NODE_SERVER_URL)
+    net_s = measure_net_one_way(db.get_secondary, config.SECONDARY_NODE_SERVER_URL)
 
     with write_concern(1):
         t0 = ms()
@@ -31,20 +36,22 @@ def run_read_after_write():
         )
         t1 = ms()
         write_ms = t1 - t0
-        half_w = safe_lat(write_ms / 2)
 
-        t_raw1 = ms() - t0
+        # RAW read: hit PRIMARY (correct routing — always fresh)
+        t_raw1  = ms() - t0
         pri_doc = db.get_primary()["incidents"].find_one({"_id": item_id})
-        t_raw2 = ms() - t0
+        t_raw2  = ms() - t0
 
+        # Stale read: hit SECONDARY (shows the anomaly)
         t_stale1 = ms() - t0
-        sec_doc = db.get_secondary()["incidents"].find_one({"_id": item_id})
+        sec_doc  = db.get_secondary()["incidents"].find_one({"_id": item_id})
         t_stale2 = ms() - t0
-        stale = sec_doc is None
+        stale    = sec_doc is None
 
+        # If secondary didn't have it yet, poll briefly so we can log repl time
         repl_ms_actual = None
         if stale:
-            t_poll = ms()
+            t_poll   = ms()
             deadline = time.time() + 5.0
             while time.time() < deadline:
                 doc = db.get_secondary()["incidents"].find_one({"_id": item_id})
@@ -52,26 +59,34 @@ def run_read_after_write():
                     repl_ms_actual = ms() - t_poll
                     break
                 time.sleep(0.002)
-        else:
-            repl_ms_actual = safe_lat(t_stale1 - half_w)
 
         log = get_log(item_id)
 
     repl_ms = repl_ms_actual or (log.get("replication_delay_ms") if log else None) or 5.0
 
     events = [
-        {"t_ms": 0,          "latency_ms": half_w,      "from": "client",    "to": "primary",
-         "label": "write incident (w=1)",              "type": "write"},
-        {"t_ms": half_w,     "latency_ms": half_w,      "from": "primary",   "to": "client",
-         "label": f"ok ({write_ms:.1f}ms) — immediately", "type": "ok"},
-        {"t_ms": half_w,     "latency_ms": safe_lat(repl_ms), "from": "primary", "to": "secondary",
+        # Write (w=1) — N_/ (N=network) shape using measured net_p
+        *req_resp_events(
+            0, write_ms, net_p,
+            "client", "primary",
+            "write incident (w=1)", "write",
+            f"ok ({write_ms:.1f}ms) — immediately", "ok",
+        ),
+        # Async oplog departs from primary after it commits (net_p into timeline)
+        {"t_ms": safe_lat(net_p),
+         "latency_ms": safe_lat(repl_ms),
+         "from": "primary", "to": "secondary",
          "label": f"oplog (async, ~{repl_ms:.1f}ms)", "type": "replicate"},
+
+        # RAW read from PRIMARY — N_/ (N=network) shape using measured net_p
         *req_resp_events(
             t_raw1, t_raw2, net_p,
             "client", "primary",
             "read (RAW path — PRIMARY)", "read",
             f"✓ fresh ({t_raw2 - t_raw1:.1f}ms) — always", "fresh_response",
         ),
+
+        # Stale read from SECONDARY — N_/ (N=network) shape using measured net_s
         *req_resp_events(
             t_stale1, t_stale2, net_s,
             "client", "secondary",

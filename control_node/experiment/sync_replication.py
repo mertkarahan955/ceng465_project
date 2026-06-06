@@ -1,5 +1,6 @@
 """Experiment 1 — Synchronous Replication (w=majority)."""
 
+import config
 import db
 import operations
 
@@ -9,17 +10,25 @@ from .common import (
     get_log,
     measure_net_one_way,
     ms,
+    req_resp_events,
     safe_lat,
     serialize_log,
 )
 
 
 def run_sync_replication():
-    """w=majority: Primary follower ACK'ini bekler, sonra istemciye döner."""
+    """w=majority: Primary follower ACK'ini bekler, sonra istemciye döner.
+
+    Timeline (N_/ (N=network) shape for each arrow pair):
+      Client → Primary   : write request  (net_p)
+      Primary → Secondary: oplog → apply  (net_s)
+      Secondary → Primary: ACK            (net_s)
+      Primary → Client   : ok             (net_p)  ← only after ACK
+    """
     operations.set_write_concern("majority")
 
-    net_p = measure_net_one_way(db.get_primary)
-    net_s = measure_net_one_way(db.get_secondary)
+    net_p = measure_net_one_way(db.get_primary,   config.PRIMARY_NODE_SERVER_URL)
+    net_s = measure_net_one_way(db.get_secondary, config.SECONDARY_NODE_SERVER_URL)
 
     t0 = ms()
     item_id, delay_ms = operations.insert_position(
@@ -27,19 +36,38 @@ def run_sync_replication():
     )
     t1 = ms()
 
-    d = delay_ms or (t1 - t0)
+    d   = delay_ms or (t1 - t0)
     log = get_log(item_id)
 
+    # Sub-timings derived from measured one-way latencies.
+    #
+    # t=0        client sends write
+    # t=net_p    primary receives; immediately starts oplog
+    # t=net_p+net_s  secondary receives oplog, applies
+    # t=d-net_s  secondary sends ACK (just before ok_depart)
+    # t=d-net_p  primary sends ok  (after ACK received)
+    # t=d        client receives ok
     oplog_start = safe_lat(net_p)
-    sec_arrive = safe_lat(net_p + net_s)
-    ok_depart = max(d - net_p, sec_arrive + net_s + 0.5)
-    sec_ack_t = max(ok_depart - net_s, sec_arrive + 0.5)
+    sec_arrive  = safe_lat(net_p + net_s)
+    ok_depart   = max(d - net_p, sec_arrive + net_s + 0.5)
+    sec_ack_t   = max(ok_depart - net_s, sec_arrive + 0.5)
 
     events = [
-        {"t_ms": 0,           "latency_ms": safe_lat(net_p),                   "from": "client",    "to": "primary",   "label": "write (w=majority)", "type": "write"},
-        {"t_ms": oplog_start, "latency_ms": safe_lat(sec_arrive - oplog_start), "from": "primary",   "to": "secondary", "label": "oplog → apply",      "type": "replicate"},
-        {"t_ms": sec_ack_t,   "latency_ms": safe_lat(ok_depart - sec_ack_t),   "from": "secondary", "to": "primary",   "label": "ACK ✓",              "type": "ack"},
-        {"t_ms": ok_depart,   "latency_ms": safe_lat(net_p),                   "from": "primary",   "to": "client",    "label": f"ok ({d:.1f} ms)",   "type": "ok"},
+        # Write request: N_/ (N=network)  (client → primary)
+        *req_resp_events(
+            0, d, net_p,
+            "client", "primary",
+            "write (w=majority)", "write",
+            f"ok ({d:.1f} ms)", "ok",
+        ),
+        # Oplog: primary → secondary  (arrives quickly, secondary processes)
+        {"t_ms": oplog_start, "latency_ms": safe_lat(sec_arrive - oplog_start),
+         "from": "primary", "to": "secondary",
+         "label": "oplog → apply", "type": "replicate"},
+        # ACK: secondary → primary  (pairs with oplog → span on secondary lane)
+        {"t_ms": sec_ack_t, "latency_ms": safe_lat(ok_depart - sec_ack_t),
+         "from": "secondary", "to": "primary",
+         "label": "ACK ✓", "type": "ack"},
     ]
 
     return {

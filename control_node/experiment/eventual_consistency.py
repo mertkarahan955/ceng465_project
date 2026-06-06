@@ -2,6 +2,7 @@
 
 import time
 
+import config
 import db
 import operations
 
@@ -42,8 +43,8 @@ def set_secondary_delay(delay_secs: int):
 
 def run_eventual_consistency():
     """Eventual consistency demonstrasyonu."""
-    net_p = measure_net_one_way(db.get_primary)
-    net_s = measure_net_one_way(db.get_secondary)
+    net_p = measure_net_one_way(db.get_primary,   config.PRIMARY_NODE_SERVER_URL)
+    net_s = measure_net_one_way(db.get_secondary, config.SECONDARY_NODE_SERVER_URL)
 
     operations.set_write_concern(1)
     item_id, _ = operations.insert_position(

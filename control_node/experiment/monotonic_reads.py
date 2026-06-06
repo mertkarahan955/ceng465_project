@@ -2,6 +2,7 @@
 
 import time
 
+import config
 import db
 import operations
 
@@ -11,6 +12,7 @@ from .common import (
     get_log,
     measure_net_one_way,
     ms,
+    req_resp_events,
     safe_lat,
     serialize_log,
     write_concern,
@@ -18,9 +20,13 @@ from .common import (
 
 
 def run_monotonic_reads():
-    """Monotonic reads guarantee — single user, always hitting the same replica."""
-    measure_net_one_way(db.get_primary)
-    measure_net_one_way(db.get_secondary)
+    """Monotonic reads guarantee — single user, always hitting the same replica.
+
+    Every arrow pair uses req_resp_events so all messages show the
+    N_/ (N=network) shape with actual measured network latency.
+    """
+    net_p = measure_net_one_way(db.get_primary,   config.PRIMARY_NODE_SERVER_URL)
+    net_s = measure_net_one_way(db.get_secondary, config.SECONDARY_NODE_SERVER_URL)
 
     with write_concern(1):
         t0 = ms()
@@ -29,10 +35,11 @@ def run_monotonic_reads():
             "MON-EXP", "DEP-IST", "DEP-ANK", "MonotonicTest",
             300, 3, status="in_transit"
         )
-        t_w1 = ms() - t0
+        t_w1 = ms() - t0  # write returned at this offset from t0
 
+        # Poll secondary until v1 is visible so reads start from a known state
         repl_ms_actual = None
-        t_poll = ms()
+        t_poll   = ms()
         deadline = time.time() + 5.0
         while time.time() < deadline:
             doc = db.get_secondary()["shipments"].find_one({"_id": shp_id})
@@ -44,7 +51,7 @@ def run_monotonic_reads():
         reads = []
         for _ in range(3):
             t_r1 = ms() - t0
-            doc = db.get_secondary()["shipments"].find_one({"_id": shp_id})
+            doc  = db.get_secondary()["shipments"].find_one({"_id": shp_id})
             t_r2 = ms() - t0
             reads.append({
                 "t_ms":     t_r1,
@@ -56,15 +63,21 @@ def run_monotonic_reads():
 
         log = get_log(shp_id)
 
-    versions = [r["version"] for r in reads]
+    versions  = [r["version"] for r in reads]
     monotonic = all(versions[i] <= versions[i + 1] for i in range(len(versions) - 1))
 
     events = [
-        {"t_ms": 0,        "latency_ms": safe_lat(3),  "from": "client",  "to": "primary",
-         "label": "write shipment (w=1)",    "type": "write"},
-        {"t_ms": 3,        "latency_ms": safe_lat(3),  "from": "primary", "to": "client",
-         "label": f"ok v1 ({t_w1:.1f}ms)",  "type": "ok"},
-        {"t_ms": 4,        "latency_ms": safe_lat(repl_ms_actual or 20), "from": "primary", "to": "secondary",
+        # Write shipment — N_/ (N=network) using measured net_p
+        *req_resp_events(
+            0, t_w1, net_p,
+            "client", "primary",
+            "write shipment (w=1)", "write",
+            f"ok v1 ({t_w1:.1f}ms)", "ok",
+        ),
+        # Oplog: departs from primary after commit (net_p into timeline)
+        {"t_ms": safe_lat(net_p),
+         "latency_ms": safe_lat(repl_ms_actual or 20),
+         "from": "primary", "to": "secondary",
          "label": f"oplog (async, ~{(repl_ms_actual or 0):.1f}ms)", "type": "replicate"},
     ]
 
@@ -72,20 +85,18 @@ def run_monotonic_reads():
     for r in reads:
         v = r["version"]
         s = r["status"]
-        half_rtt = safe_lat((r["t_end_ms"] - r["t_ms"]) / 2)
         went_back = prev_v is not None and v < prev_v
-        prev_v = v
-        events.append({
-            "t_ms": r["t_ms"], "latency_ms": half_rtt,
-            "from": "client", "to": "secondary",
-            "label": "read (SECONDARY)", "type": "read",
-        })
-        events.append({
-            "t_ms": r["t_ms"] + half_rtt, "latency_ms": half_rtt,
-            "from": "secondary", "to": "client",
-            "label": f"v{v} ({s})" + (" ⚡ BACKWARDS!" if went_back else " ✓"),
-            "type": "stale_response" if went_back else "fresh_response",
-        })
+        prev_v    = v
+        resp_label = f"v{v} ({s})" + (" ⚡ BACKWARDS!" if went_back else " ✓")
+        resp_type  = "stale_response" if went_back else "fresh_response"
+
+        # Each read — N_/ (N=network) using measured net_s
+        events.extend(req_resp_events(
+            r["t_ms"], r["t_end_ms"], net_s,
+            "client", "secondary",
+            "read (SECONDARY)", "read",
+            resp_label, resp_type,
+        ))
 
     repl_ms = repl_ms_actual or (log.get("replication_delay_ms") if log else None)
 
