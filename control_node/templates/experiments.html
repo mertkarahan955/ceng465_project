@@ -425,7 +425,7 @@ details summary:hover { color: var(--text); }
     <!-- 4. Monotonic Reads -->
     <div class="exp-card" id="card-monotonic_reads" onclick="selectExperiment('monotonic_reads')">
       <div class="exp-card-title">④ Monotonic Reads</div>
-      <div class="exp-card-desc">Secondary'den ardışık okumalar asla önceki versiyona geri dönemez</div>
+      <div class="exp-card-desc">PRIMARY v2 gördükten sonra SECONDARY v1 görmek ihlaldir — zaman geri gider (DDIA Fig. 5-4)</div>
       <span class="exp-badge badge-mono">version order</span>
       <button class="run-btn" id="btn-monotonic_reads"
               onclick="event.stopPropagation(); runExperiment('monotonic_reads')">
@@ -649,6 +649,15 @@ function renderResult(result, fromHistory) {
       verdictClass = 'verdict-fail';
       verdictText  = '✗ RAW VIOLATED — Could not read own write from PRIMARY.';
     }
+  } else if (summary.monotonic_violated !== undefined) {
+    if (summary.monotonic_violated) {
+      verdictClass = 'verdict-fail';
+      verdictText  = '✗ MONOTONIC VIOLATED — version went backwards on SECONDARY';
+    } else {
+      verdictClass = 'verdict-ok';
+      verdictText  = '✓ MONOTONIC HOLDS — SECONDARY versions never went backwards (' +
+        (summary.versions_seen || []).map(v => 'v' + v).join(' → ') + ')';
+    }
   } else if (stale && achieved) {
     verdictClass = 'verdict-partial';
     verdictText  = '⚡ EVENTUAL — stale read observed, eventually consistent';
@@ -771,9 +780,11 @@ function buildStatRows(s) {
 
   if (s.versions_seen && s.versions_seen.length)
     rows.push(stat('Versions seen', s.versions_seen.map(v => 'v' + v).join(' → '), 'purple'));
-
-  if (s.monotonic != null)
-    rows.push(stat('Monotonic', s.monotonic ? 'YES ✓' : 'VIOLATED ✗', s.monotonic ? 'green' : 'red'));
+  if (s.final_version != null)
+    rows.push(stat('Final version', 'v' + s.final_version, 'white'));
+  if (s.monotonic_violated != null)
+    rows.push(stat('Monotonic', s.monotonic_violated ? 'VIOLATED ✗' : 'HOLDS ✓',
+                   s.monotonic_violated ? 'red' : 'green'));
 
   return rows.join('');
 }

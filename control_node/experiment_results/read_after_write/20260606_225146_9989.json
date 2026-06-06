@@ -1,0 +1,108 @@
+{
+  "saved_at": "2026-06-06T22:51:46.999392",
+  "experiment": "read_after_write",
+  "title": "Read-After-Write Consistency",
+  "description": "Yazıdan sonra SECONDARY'den okursak kendi yazımızı göremeyebiliriz. RAW çözümü: write yapan session için okumaları PRIMARY'ye yönlendir. (DDIA Figure 5-3)",
+  "actors": {
+    "client": {
+      "label": "Client / Dashboard",
+      "color": "#e6edf3",
+      "ip": "(control node)"
+    },
+    "primary": {
+      "label": "PRIMARY",
+      "color": "#3fb950",
+      "ip": "192.168.88.30"
+    },
+    "secondary": {
+      "label": "SECONDARY",
+      "color": "#58a6ff",
+      "ip": "192.168.88.70"
+    }
+  },
+  "actor_order": [
+    "client",
+    "primary",
+    "secondary"
+  ],
+  "events": [
+    {
+      "t_ms": 0,
+      "latency_ms": 6.521484375,
+      "from": "client",
+      "to": "primary",
+      "label": "write incident (w=1)",
+      "type": "write"
+    },
+    {
+      "t_ms": 6.521484375,
+      "latency_ms": 6.521484375,
+      "from": "primary",
+      "to": "client",
+      "label": "ok (13.0ms) — immediately",
+      "type": "ok"
+    },
+    {
+      "t_ms": 6.521484375,
+      "latency_ms": 10.85400390625,
+      "from": "primary",
+      "to": "secondary",
+      "label": "oplog (async, ~10.9ms)",
+      "type": "replicate"
+    },
+    {
+      "t_ms": 13.046142578125,
+      "latency_ms": 0.5,
+      "from": "client",
+      "to": "primary",
+      "label": "read (RAW path — PRIMARY)",
+      "type": "read"
+    },
+    {
+      "t_ms": 14.046142578125,
+      "latency_ms": 0.5,
+      "from": "primary",
+      "to": "client",
+      "label": "✓ fresh (0.7ms) — always",
+      "type": "fresh_response"
+    },
+    {
+      "t_ms": 13.757080078125,
+      "latency_ms": 4.3299560546875,
+      "from": "client",
+      "to": "secondary",
+      "label": "read (wrong path)",
+      "type": "read"
+    },
+    {
+      "t_ms": 97.8511962890625,
+      "latency_ms": 4.3299560546875,
+      "from": "secondary",
+      "to": "client",
+      "label": "⚡ stale! (write not propagated)",
+      "type": "stale_response"
+    }
+  ],
+  "log": {
+    "log_index": 382,
+    "operation_id": "e12a0e70",
+    "version_before": null,
+    "version_after": 1,
+    "write_concern": "1",
+    "status": "visible_on_follower",
+    "replication_delay_ms": 124.45,
+    "leader_write_time": "2026-06-06T19:51:46.885000",
+    "follower_visible_time": "2026-06-06T19:51:47.009000",
+    "target_collection": "incidents"
+  },
+  "summary": {
+    "write_concern": "1 (async)",
+    "write_returned_ms": 13.04,
+    "stale_read_observed": true,
+    "raw_read_ms": 0.71,
+    "raw_fresh": true,
+    "replication_delay_ms": 10.85,
+    "consistency_model": "Read-After-Write",
+    "consistency_achieved": true
+  }
+}

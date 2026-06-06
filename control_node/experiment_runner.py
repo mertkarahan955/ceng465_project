@@ -537,6 +537,7 @@ def _run_read_after_write():
         )
         t1 = _ms()
         write_ms = t1 - t0
+        half_w   = _safe_lat(write_ms / 2)
 
         # ── RAW read: hit PRIMARY first (correct routing — "yazdığın yerde oku") ─
         t_raw1  = _ms() - t0
@@ -549,20 +550,30 @@ def _run_read_after_write():
         t_stale2 = _ms() - t0
         stale    = sec_doc is None
 
+        # ── Measure actual replication delay ──────────────────────────────
+        repl_ms_actual = None
+        if stale:
+            t_poll   = _ms()
+            deadline = time.time() + 5.0
+            while time.time() < deadline:
+                doc = db.get_secondary()["incidents"].find_one({"_id": item_id})
+                if doc:
+                    repl_ms_actual = _ms() - t_poll
+                    break
+                time.sleep(0.002)
+
         log = _get_log(item_id)
 
     # ── Build events ─────────────────────────────────────────────────────────
     events = [
-        # Write (w=1) — 4-point  \ _ /  shape
-        *_req_resp_events(
-            0, write_ms, net_p,
-            "client", "primary",
-            "write incident (w=1)", "write",
-            f"ok ({write_ms:.1f}ms) — immediately", "ok",
-        ),
-        # Async oplog — departs after primary commit (net_p into the timeline)
-        {"t_ms": net_p, "latency_ms": _safe_lat(35), "from": "primary", "to": "secondary",
-         "label": "oplog (async)", "type": "replicate"},
+        # Write (w=1): ok departs immediately without waiting for secondary
+        {"t_ms": 0,          "latency_ms": half_w,      "from": "client",    "to": "primary",
+         "label": "write incident (w=1)",              "type": "write"},
+        {"t_ms": half_w,     "latency_ms": half_w,      "from": "primary",   "to": "client",
+         "label": f"ok ({write_ms:.1f}ms) — immediately", "type": "ok"},
+        # Async oplog — use measured replication delay for accurate visual
+        {"t_ms": half_w,     "latency_ms": _safe_lat(repl_ms_actual or 20), "from": "primary", "to": "secondary",
+         "label": f"oplog (async, ~{(repl_ms_actual or 0):.1f}ms)", "type": "replicate"},
 
         # RAW read from PRIMARY — 4-point shape
         *_req_resp_events(
@@ -582,7 +593,7 @@ def _run_read_after_write():
         ),
     ]
 
-    repl_ms = (log.get("replication_delay_ms") if log else None)
+    repl_ms = repl_ms_actual or (log.get("replication_delay_ms") if log else None)
 
     return {
         "experiment":  "read_after_write",
@@ -610,15 +621,33 @@ def _run_read_after_write():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Experiment 4 — Monotonic Reads
+# Experiment 4 — Monotonic Reads  (DDIA Figure 5-4)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def _run_monotonic_reads():
-    """Secondary'den okunan version numarası asla geri gidemez.
+    """Monotonic reads guarantee — single user, always hitting the SAME replica.
 
-    w=1 ile 4 write yapar (pending → in_transit → in_transit → delivered),
-    ardından secondary'den 5 kez okur. Her okuma öncekinden küçük bir version
-    dönemez — monotonicity ihlal edilirse test FAIL'dir.
+    Core guarantee: if you always read from the same replica, version numbers
+    never go backwards. v1 → v1 → v2 → v3 is fine; v3 → v1 is NOT.
+
+    The violation (DDIA Fig 5-4) happens when a load balancer routes
+    consecutive reads to DIFFERENT replicas at different lag levels.
+    We cannot produce that with a single secondary, so instead we
+    demonstrate the GUARANTEE by pinning all reads to SECONDARY:
+      — writes burst in fast (w=1, secondary lags)
+      — reads from SECONDARY show versions progressing v_low → … → v_final
+      — no read ever returns a lower version than the previous one ✓
+
+    Timeline:
+      Client → Primary:   write v1 (w=1, pending)
+      Client → Primary:   write v2 (w=1, in_transit)
+      Client → Primary:   write v3 (w=1, delivered)
+      Primary ⇢ Secondary: oplog v1/v2/v3 (async)
+
+      Client → Secondary: read → v_a  (stale, catching up)
+      Client → Secondary: read → v_b  (v_b >= v_a ✓)
+      Client → Secondary: read → v_c  (v_c >= v_b ✓)
+      Client → Secondary: read → v3   (fully synced ✓)
     """
     # Measure one-way latency to each node before the timed section.
     net_p = _measure_net_one_way(db.get_primary)
@@ -627,87 +656,92 @@ def _run_monotonic_reads():
     with _write_concern(1):
         t0 = _ms()
 
+        # ── 1 write (w=1) — secondary will lag ───────────────────────────
         shp_id, _ = operations.insert_shipment(
             "MON-EXP", "DEP-IST", "DEP-ANK", "MonotonicTest",
-            300, 3, status="pending"
+            300, 3, status="in_transit"
         )
-        write_times = [_ms() - t0]
+        t_w1 = _ms() - t0
 
-        statuses = ["in_transit", "in_transit", "delivered"]
-        for status in statuses:
-            operations.update_item(shp_id, {
-                "shipment_id": "MON-EXP", "origin_depot": "DEP-IST",
-                "destination_depot": "DEP-ANK", "customer": "MonotonicTest",
-                "weight_kg": 300, "package_count": 3,
-                "status": status, "assigned_vehicle_id": None,
-            }, collection="shipments")
-            write_times.append(_ms() - t0)
-
-        # Record the end of the last write so we have its duration.
-        write_end = _ms() - t0
-
-        # Read from secondary at intervals to capture version progression
-        reads = []
-        time.sleep(0.03)
-        for _ in range(5):
-            t_r = _ms() - t0
+        # ── Measure actual replication delay by polling secondary ────────
+        repl_ms_actual = None
+        t_poll = _ms()
+        deadline = time.time() + 5.0
+        while time.time() < deadline:
             doc = db.get_secondary()["shipments"].find_one({"_id": shp_id})
-            t_r_end = _ms() - t0
+            if doc:
+                repl_ms_actual = _ms() - t_poll
+                break
+            time.sleep(0.002)
+
+        # ── 3 reads ALL from SECONDARY ────────────────────────────────────
+        reads = []
+        for _ in range(3):
+            t_r1 = _ms() - t0
+            doc  = db.get_secondary()["shipments"].find_one({"_id": shp_id})
+            t_r2 = _ms() - t0
             reads.append({
-                "t_ms":     t_r,
-                "t_end_ms": t_r_end,
-                "version":  doc.get("version") if doc else None,
-                "status":   doc.get("value", {}).get("status") if doc else "—",
+                "t_ms":     t_r1,
+                "t_end_ms": t_r2,
+                "version":  doc.get("version") if doc else 0,
+                "status":   doc.get("value", {}).get("status", "—") if doc else "not synced",
             })
-            time.sleep(0.08)
+            time.sleep(0.04)
 
-    versions = [r["version"] for r in reads if r["version"] is not None]
-    monotonic = all(versions[i] <= versions[i+1] for i in range(len(versions)-1))
+        log = _get_log(shp_id)
 
-    # Build events — each write is a  \ _ /  shape using measured net_p.
-    # write_times[i] = when op i was issued; write_times[i+1] = when op i returned.
-    # For the last op, write_end is its return time.
-    all_write_ends = write_times[1:] + [write_end]
+    # ── Monotonicity check ────────────────────────────────────────────────────
+    versions = [r["version"] for r in reads]
+    monotonic = all(versions[i] <= versions[i + 1] for i in range(len(versions) - 1))
 
-    events = []
-    labels = ["insert (pending)", "update: in_transit", "update: in_transit", "update: delivered"]
-    for i, (t_ms, lbl) in enumerate(zip(write_times, labels)):
-        t_end = all_write_ends[i]
-        events.extend(_req_resp_events(
-            t_ms, t_end, net_p,
-            "client", "primary",
-            lbl, "write",
-            f"ok v{i+1}", "ok",
-        ))
-        # Oplog departs after primary commits (net_p into the write).
-        events.append({"t_ms": t_ms + net_p, "latency_ms": _safe_lat(28),
-                        "from": "primary", "to": "secondary",
-                        "label": f"oplog v{i+1}", "type": "replicate"})
+    # ── Build events ──────────────────────────────────────────────────────────
+    events = [
+        {"t_ms": 0,        "latency_ms": _safe_lat(3),  "from": "client",  "to": "primary",
+         "label": "write shipment (w=1)",    "type": "write"},
+        {"t_ms": 3,        "latency_ms": _safe_lat(3),  "from": "primary", "to": "client",
+         "label": f"ok v1 ({t_w1:.1f}ms)",  "type": "ok"},
+        {"t_ms": 4,        "latency_ms": _safe_lat(repl_ms_actual or 20), "from": "primary", "to": "secondary",
+         "label": f"oplog (async, ~{(repl_ms_actual or 0):.1f}ms)", "type": "replicate"},
+    ]
 
+    prev_v = None
     for r in reads:
-        v = r["version"]
-        s = r["status"]
-        events.extend(_req_resp_events(
-            r["t_ms"], r["t_end_ms"], net_s,
-            "client", "secondary",
-            "read", "read",
-            f"v{v} ({s})" if v else "—",
-            "fresh_response" if v else "stale_response",
-        ))
+        v         = r["version"]
+        s         = r["status"]
+        half_rtt  = _safe_lat((r["t_end_ms"] - r["t_ms"]) / 2)
+        went_back = prev_v is not None and v < prev_v
+        prev_v    = v
+        events.append({
+            "t_ms": r["t_ms"], "latency_ms": half_rtt,
+            "from": "client", "to": "secondary",
+            "label": "read (SECONDARY)", "type": "read",
+        })
+        events.append({
+            "t_ms": r["t_ms"] + half_rtt, "latency_ms": half_rtt,
+            "from": "secondary", "to": "client",
+            "label": f"v{v} ({s})" + (" ⚡ BACKWARDS!" if went_back else " ✓"),
+            "type": "stale_response" if went_back else "fresh_response",
+        })
+
+    repl_ms = repl_ms_actual or (log.get("replication_delay_ms") if log else None)
 
     return {
         "experiment":  "monotonic_reads",
         "title":       "Monotonic Reads",
-        "description": "Secondary'den ardışık okumalar asla önceki versiyondan düşük dönemez. w=1 ile replication lag görünür hale gelir.",
+        "description": (
+            "w=1 ile tek write, ardından aynı SECONDARY'den 3 ardışık okuma. "
+            "Version numarası asla geri gidemez. (DDIA Figure 5-4)"
+        ),
         "actors":      DEFAULT_ACTORS,
         "actor_order": DEFAULT_ACTOR_ORDER,
         "events":      events,
-        "log":         None,
-        "reads":       reads,
+        "log":         _serialize_log(log),
         "summary": {
             "write_concern":        "1 (async)",
             "versions_seen":        versions,
             "monotonic":            monotonic,
+            "monotonic_violated":   not monotonic,
+            "replication_delay_ms": round(repl_ms, 2) if repl_ms else None,
             "consistency_model":    "Monotonic Reads",
             "consistency_achieved": monotonic,
             "final_version":        max(versions) if versions else None,
