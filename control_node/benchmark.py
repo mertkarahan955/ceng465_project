@@ -354,7 +354,7 @@ def run_writer(ops: int, run_id: str):
 
 def _process_manifest_doc(doc, sdb, pdb, results, processed, progress, task):
     from bson import ObjectId
-    if not doc or doc.get("run_id") != doc.get("run_id"):
+    if not doc or doc.get("run_id") != run_id:
         return
     seq = doc["seq"]
     if seq in processed:

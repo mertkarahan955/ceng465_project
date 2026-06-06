@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>CENG465 — Replication Dashboard</title>
+  <title>CENG465 — Fleet Replication Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -58,7 +58,7 @@
 
     /* ── Left panel ── */
     .left-panel {
-      width: 280px;
+      width: 300px;
       flex-shrink: 0;
       background: var(--surface);
       border-right: 1px solid var(--border);
@@ -84,6 +84,22 @@
       border-bottom: 1px solid var(--border);
     }
 
+    /* ── Collection tabs ── */
+    .coll-tabs { display: flex; flex-wrap: wrap; gap: 5px; }
+    .coll-tab {
+      padding: 5px 10px; border-radius: 5px; cursor: pointer;
+      font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px;
+      border: 1px solid var(--border); color: var(--muted);
+      background: transparent; transition: all .15s;
+    }
+    .coll-tab:hover { border-color: var(--blue); color: var(--blue); }
+    .coll-tab.active[data-coll="vehicles"]  { background: rgba(63,185,80,.15);   color: var(--green);  border-color: var(--green); }
+    .coll-tab.active[data-coll="drivers"]   { background: rgba(88,166,255,.15);  color: var(--blue);   border-color: var(--blue); }
+    .coll-tab.active[data-coll="depots"]    { background: rgba(240,136,62,.15);  color: var(--orange); border-color: var(--orange); }
+    .coll-tab.active[data-coll="shipments"] { background: rgba(163,113,247,.15); color: var(--purple); border-color: var(--purple); }
+    .coll-tab.active[data-coll="positions"] { background: rgba(210,153,34,.15);  color: var(--yellow); border-color: var(--yellow); }
+    .coll-tab.active[data-coll="incidents"] { background: rgba(248,81,73,.15);   color: var(--red);    border-color: var(--red); }
+
     /* Op tabs */
     .tabs { display: flex; gap: 4px; }
     .tab {
@@ -99,6 +115,9 @@
     .op-form { display: none; flex-direction: column; gap: 10px; }
     .op-form.active { display: flex; }
 
+    .fleet-form { display: none; flex-direction: column; gap: 10px; }
+    .fleet-form.active { display: flex; }
+
     label { font-size: 11px; color: var(--muted); display: block; margin-bottom: 3px; }
     input, textarea, select {
       width: 100%; padding: 7px 10px; border-radius: 6px;
@@ -107,7 +126,7 @@
       outline: none; transition: border-color .15s;
     }
     input:focus, textarea:focus, select:focus { border-color: var(--blue); }
-    textarea { resize: vertical; min-height: 70px; }
+    textarea { resize: vertical; min-height: 60px; }
 
     .btn {
       padding: 8px 14px; border-radius: 6px; border: none;
@@ -116,8 +135,13 @@
     }
     .btn:hover { opacity: .85; }
     .btn.insert { background: var(--green); color: #000; }
-    .btn.update { background: var(--blue); color: #000; }
-    .btn.delete { background: var(--red); color: #fff; }
+    .btn.update { background: var(--blue);  color: #000; }
+    .btn.delete { background: var(--red);   color: #fff; }
+    .btn.query  {
+      background: rgba(88,166,255,.15); color: var(--blue);
+      border: 1px solid var(--blue); padding: 6px 10px; font-size: 11px;
+    }
+    .btn.query:hover { background: rgba(88,166,255,.25); opacity: 1; }
 
     .result-box {
       padding: 8px 10px; border-radius: 6px;
@@ -165,18 +189,29 @@
       display: inline-block; padding: 2px 8px; border-radius: 10px;
       font-size: 10px; font-weight: 700;
     }
-    .pill-insert { background: rgba(63,185,80,.15); color: var(--green); }
+    .pill-insert { background: rgba(63,185,80,.15);  color: var(--green); }
     .pill-update { background: rgba(88,166,255,.15); color: var(--blue); }
-    .pill-delete { background: rgba(248,81,73,.15); color: var(--red); }
-    .pill-ok { background: rgba(63,185,80,.1); color: var(--green); }
-    .pill-timeout { background: rgba(248,81,73,.1); color: var(--red); }
-    .pill-visible_on_follower { background: rgba(63,185,80,.1); color: var(--green); }
-    .pill-pending_follower { background: rgba(210,153,34,.14); color: var(--yellow); }
+    .pill-delete { background: rgba(248,81,73,.15);  color: var(--red); }
+    .pill-ok     { background: rgba(63,185,80,.1);   color: var(--green); }
+    .pill-timeout { background: rgba(248,81,73,.1);  color: var(--red); }
+    .pill-visible_on_follower { background: rgba(63,185,80,.1);   color: var(--green); }
+    .pill-pending_follower    { background: rgba(210,153,34,.14); color: var(--yellow); }
+
+    .coll-pill {
+      display: inline-block; padding: 1px 6px; border-radius: 4px;
+      font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .3px;
+    }
+    .coll-vehicles  { background: rgba(63,185,80,.15);   color: var(--green); }
+    .coll-drivers   { background: rgba(88,166,255,.15);  color: var(--blue); }
+    .coll-depots    { background: rgba(240,136,62,.15);  color: var(--orange); }
+    .coll-shipments { background: rgba(163,113,247,.15); color: var(--purple); }
+    .coll-positions { background: rgba(210,153,34,.15);  color: var(--yellow); }
+    .coll-incidents { background: rgba(248,81,73,.15);   color: var(--red); }
+    .coll-items     { background: rgba(139,148,158,.1);  color: var(--muted); }
 
     .sync-icon { font-size: 14px; }
     .deleted-row td { opacity: .45; }
 
-    /* Primary vs Secondary header row */
     .node-header {
       display: flex; align-items: center; gap: 8px;
       padding: 6px 16px;
@@ -190,11 +225,6 @@
     .node-badge.p { background: rgba(63,185,80,.15); color: var(--green); }
     .node-badge.s { background: rgba(88,166,255,.15); color: var(--blue); }
 
-    /* ── Right bottom: log ── */
-    .log-panel { display: flex; flex-direction: column; overflow: hidden; min-height: 60px; }
-    .log-panel table thead th { top: 0; }
-
-    /* ── Panel headers ── */
     .panel-header {
       display: flex; align-items: center; gap: 8px;
       padding: 6px 16px;
@@ -206,12 +236,6 @@
       font-size: 10px; font-weight: 700; text-transform: uppercase;
       letter-spacing: .8px; color: var(--muted);
     }
-    .collapse-btn {
-      margin-left: auto; background: none; border: none;
-      color: var(--muted); font-size: 14px; cursor: pointer;
-      padding: 0 4px; line-height: 1;
-    }
-    .collapse-btn:hover { color: var(--text); }
     .panel-body { flex: 1; overflow: auto; }
 
     /* ── Drag resize handle ── */
@@ -239,6 +263,19 @@
     }
     .chart-section canvas { flex: 1; min-height: 0; padding: 0 4px 8px; }
 
+    /* ── Access Patterns ── */
+    .ap-buttons { display: flex; flex-direction: column; gap: 6px; }
+    .ap-result {
+      margin-top: 2px; padding: 8px 10px; border-radius: 6px;
+      background: var(--bg); border: 1px solid var(--border);
+      font-size: 10px; color: var(--muted); line-height: 1.6;
+      max-height: 100px; overflow-y: auto;
+      display: none;
+    }
+    .ap-result.show { display: block; }
+    .ap-src-p { color: var(--green);  font-weight: 700; }
+    .ap-src-s { color: var(--blue);   font-weight: 700; }
+
     /* ── Toast ── */
     #toast {
       position: fixed; bottom: 24px; right: 24px;
@@ -251,7 +288,6 @@
     }
     #toast.show { opacity: 1; transform: translateY(0); }
 
-    /* scrollbar */
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
@@ -261,7 +297,7 @@
 
 <!-- ── Header ── -->
 <header>
-  <h1>CENG465 — Single-Leader Replication Dashboard</h1>
+  <h1>CENG465 — Fleet Replication Dashboard</h1>
   <span class="badge primary" id="badge-primary"><span class="dot"></span>PRIMARY &nbsp;<span id="hdr-primary">mongo-primary.lan</span></span>
   <span class="badge secondary" id="badge-secondary"><span class="dot"></span>SECONDARY &nbsp;<span id="hdr-secondary">mongo-secondary.lan</span></span>
   <div class="stats-bar">
@@ -278,40 +314,141 @@
   <!-- ── Left panel ── -->
   <aside class="left-panel">
 
+    <!-- Collection selector -->
+    <div>
+      <div class="panel-title">Collection</div>
+      <div style="height:10px"></div>
+      <div class="coll-tabs">
+        <button class="coll-tab active" data-coll="vehicles"  onclick="setCollection('vehicles')">Vehicles</button>
+        <button class="coll-tab"        data-coll="drivers"   onclick="setCollection('drivers')">Drivers</button>
+        <button class="coll-tab"        data-coll="depots"    onclick="setCollection('depots')">Depots</button>
+        <button class="coll-tab"        data-coll="shipments" onclick="setCollection('shipments')">Shipments</button>
+        <button class="coll-tab"        data-coll="positions" onclick="setCollection('positions')">Positions</button>
+        <button class="coll-tab"        data-coll="incidents" onclick="setCollection('incidents')">Incidents</button>
+      </div>
+      <div id="coll-desc" style="margin-top:8px;font-size:10px;color:var(--muted);line-height:1.5;padding:6px;background:var(--bg);border:1px solid var(--border);border-radius:6px"></div>
+    </div>
+
+    <!-- Operations -->
     <div>
       <div class="panel-title">Operations</div>
       <div style="height:12px"></div>
 
       <div class="tabs">
         <button class="tab active insert" onclick="setTab('insert')">Insert</button>
-        <button class="tab update" onclick="setTab('update')">Update</button>
-        <button class="tab delete" onclick="setTab('delete')">Delete</button>
+        <button class="tab update"        onclick="setTab('update')">Update</button>
+        <button class="tab delete"        onclick="setTab('delete')">Delete</button>
       </div>
       <div style="height:12px"></div>
 
-      <!-- Insert form -->
+      <!-- Insert forms -->
       <div class="op-form active" id="form-insert">
-        <div>
-          <label>Key</label>
-          <input id="ins-key" type="text" placeholder="e.g. sensor_1" value="sensor_1">
+
+        <!-- vehicles -->
+        <div class="fleet-form active" id="ins-vehicles">
+          <div><label>Vehicle ID</label><input id="vhc-id" value="TRK-001"></div>
+          <div><label>Plate</label><input id="vhc-plate" value="34 ABC 001"></div>
+          <div><label>Type</label>
+            <select id="vhc-type">
+              <option value="truck">Truck</option>
+              <option value="van">Van</option>
+              <option value="motorcycle">Motorcycle</option>
+            </select>
+          </div>
+          <div><label>Max Payload (kg)</label><input id="vhc-payload" type="number" value="5000"></div>
+          <div><label>Manufacture Year</label><input id="vhc-year" type="number" value="2020"></div>
         </div>
-        <div>
-          <label>Value (JSON)</label>
-          <textarea id="ins-val">{"temperature": 22.5, "unit": "C"}</textarea>
+
+        <!-- drivers -->
+        <div class="fleet-form" id="ins-drivers">
+          <div><label>Driver ID</label><input id="drv-id" value="DRV-001"></div>
+          <div><label>Full Name</label><input id="drv-name" value="Ali Yilmaz"></div>
+          <div><label>License Class</label>
+            <select id="drv-license">
+              <option value="B">B</option>
+              <option value="C">C</option>
+              <option value="D">D</option>
+              <option value="E" selected>E</option>
+            </select>
+          </div>
+          <div><label>Phone</label><input id="drv-phone" value="+90 555 100 0001"></div>
+          <div><label>Assigned Vehicle ID</label><input id="drv-vehicle" value="TRK-001"></div>
         </div>
-        <button class="btn insert" onclick="doInsert()">Insert</button>
+
+        <!-- depots -->
+        <div class="fleet-form" id="ins-depots">
+          <div><label>Depot ID</label><input id="dep-id" value="DEP-IST"></div>
+          <div><label>Name</label><input id="dep-name" value="Istanbul Ana Depo"></div>
+          <div><label>City</label><input id="dep-city" value="Istanbul"></div>
+          <div><label>Lat</label><input id="dep-lat" type="number" step="any" value="41.0082"></div>
+          <div><label>Lng</label><input id="dep-lng" type="number" step="any" value="28.9784"></div>
+          <div><label>Vehicle Capacity</label><input id="dep-cap" type="number" value="50"></div>
+        </div>
+
+        <!-- shipments -->
+        <div class="fleet-form" id="ins-shipments">
+          <div><label>Shipment ID</label><input id="shp-id" value="SHP-2026-001"></div>
+          <div><label>Origin Depot</label><input id="shp-origin" value="DEP-IST"></div>
+          <div><label>Destination Depot</label><input id="shp-dest" value="DEP-ANK"></div>
+          <div><label>Customer</label><input id="shp-customer" value="Acme Corp"></div>
+          <div><label>Weight (kg)</label><input id="shp-weight" type="number" value="1200"></div>
+          <div><label>Package Count</label><input id="shp-pkgs" type="number" value="15"></div>
+          <div><label>Status</label>
+            <select id="shp-status">
+              <option value="pending">Pending</option>
+              <option value="in_transit" selected>In Transit</option>
+              <option value="delivered">Delivered</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+          </div>
+          <div><label>Assigned Vehicle</label><input id="shp-vehicle" value="TRK-001"></div>
+        </div>
+
+        <!-- positions -->
+        <div class="fleet-form" id="ins-positions">
+          <div><label>Vehicle ID</label><input id="pos-vehicle" value="TRK-001"></div>
+          <div><label>Lat</label><input id="pos-lat" type="number" step="any" value="39.9334"></div>
+          <div><label>Lng</label><input id="pos-lng" type="number" step="any" value="32.8597"></div>
+          <div><label>City</label><input id="pos-city" value="Ankara"></div>
+          <div><label>District</label><input id="pos-district" value="Cankaya"></div>
+          <div><label>Speed (km/h)</label><input id="pos-speed" type="number" value="72"></div>
+        </div>
+
+        <!-- incidents -->
+        <div class="fleet-form" id="ins-incidents">
+          <div><label>Vehicle ID</label><input id="inc-vehicle" value="TRK-001"></div>
+          <div><label>Incident Type</label>
+            <select id="inc-type">
+              <option value="breakdown">Breakdown</option>
+              <option value="accident">Accident</option>
+              <option value="delay">Delay</option>
+              <option value="fuel_low">Fuel Low</option>
+            </select>
+          </div>
+          <div><label>Severity</label>
+            <select id="inc-severity">
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high" selected>High</option>
+              <option value="critical">Critical</option>
+            </select>
+          </div>
+          <div><label>Description</label><textarea id="inc-desc">Sol on lastik patladi, kenar yola cekildi.</textarea></div>
+        </div>
+
+        <button class="btn insert" onclick="doFleetInsert()">Insert</button>
         <div class="result-box" id="res-insert"></div>
       </div>
 
       <!-- Update form -->
       <div class="op-form" id="form-update">
         <div>
-          <label>Item</label>
+          <label>Item (current collection)</label>
           <select id="upd-id"><option value="">— select item —</option></select>
         </div>
         <div>
           <label>New Value (JSON)</label>
-          <textarea id="upd-val">{"temperature": 25.0, "unit": "C"}</textarea>
+          <textarea id="upd-val">{"status": "delivered"}</textarea>
         </div>
         <button class="btn update" onclick="doUpdate()">Update</button>
         <div class="result-box" id="res-update"></div>
@@ -320,7 +457,7 @@
       <!-- Delete form -->
       <div class="op-form" id="form-delete">
         <div>
-          <label>Item</label>
+          <label>Item (current collection)</label>
           <select id="del-id"><option value="">— select item —</option></select>
         </div>
         <button class="btn delete" onclick="doDelete()">Soft Delete</button>
@@ -345,6 +482,45 @@
       <div id="wc-info" style="font-size:11px;color:var(--muted);line-height:1.5;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px">
         <strong style="color:var(--green)">w=majority</strong>: write blocks until secondary ACKs — appears synchronous.<br>
         Switch to <strong style="color:var(--orange)">w=1</strong> to make writes fire-and-forget (true async).
+      </div>
+    </div>
+
+    <!-- Access Patterns (Consistency Experiments) -->
+    <div>
+      <div class="panel-title">Access Patterns</div>
+      <div style="height:10px"></div>
+      <div style="font-size:10px;color:var(--muted);margin-bottom:8px;line-height:1.5;">
+        Read source: <span class="ap-src-p">PRIMARY</span> = fresh &nbsp;|&nbsp;
+        <span class="ap-src-s">SECONDARY</span> = stale OK
+      </div>
+      <div class="ap-buttons">
+        <button class="btn query" onclick="apQuery('fleet/overview','ap-1')">
+          Fleet Overview <span class="ap-src-s">SEC</span>
+        </button>
+        <div class="ap-result" id="ap-1"></div>
+
+        <div style="display:flex;gap:6px;align-items:center">
+          <input id="ap-vid" style="font-size:11px;flex:1" placeholder="vehicle_id" value="TRK-001">
+        </div>
+        <button class="btn query" onclick="apQueryV('fleet/vehicle-history','ap-2')">
+          Vehicle History <span class="ap-src-s">SEC</span>
+        </button>
+        <div class="ap-result" id="ap-2"></div>
+
+        <button class="btn query" onclick="apQueryV('fleet/current-position','ap-3')">
+          Current Position <span class="ap-src-p">PRI</span>
+        </button>
+        <div class="ap-result" id="ap-3"></div>
+
+        <button class="btn query" onclick="apQuery('fleet/active-shipments','ap-4')">
+          Active Shipments <span class="ap-src-s">SEC</span>
+        </button>
+        <div class="ap-result" id="ap-4"></div>
+
+        <button class="btn query" onclick="apQuery('fleet/open-incidents','ap-5')">
+          Open Incidents <span class="ap-src-p">PRI</span>
+        </button>
+        <div class="ap-result" id="ap-5"></div>
       </div>
     </div>
 
@@ -389,36 +565,23 @@
   <div class="data-panel" id="panel-items" style="flex:2">
     <div class="node-header panel-header">
       <span class="node-badge p">Primary</span>
-      <span style="color:var(--muted);font-size:11px;">↔</span>
+      <span style="color:var(--muted);font-size:11px;">&#x21D4;</span>
       <span class="node-badge s">Secondary</span>
-      <span class="ph-title" style="margin-left:8px;">Items (latest 50)</span>
-      <button onclick="refreshAll()" style="background:var(--bg);border:1px solid var(--border);color:var(--muted);padding:3px 10px;border-radius:5px;cursor:pointer;font-size:11px;margin-left:auto;">↻ Refresh</button>
+      <span class="ph-title" style="margin-left:8px;" id="data-panel-title">Vehicles (latest 50)</span>
+      <button onclick="refreshAll()" style="background:var(--bg);border:1px solid var(--border);color:var(--muted);padding:3px 10px;border-radius:5px;cursor:pointer;font-size:11px;margin-left:auto;">&#x21BB; Refresh</button>
     </div>
     <div class="panel-body" id="body-items">
-    <table>
-      <thead>
-        <tr>
-          <th>Key</th>
-          <th>Value</th>
-          <th>ver</th>
-          <th>term</th>
-          <th>log#</th>
-          <th>op_id</th>
-          <th>deleted</th>
-          <th>last_updated</th>
-          <th style="color:var(--blue)">sec.ver</th>
-          <th>sync</th>
-        </tr>
-      </thead>
-      <tbody id="items-tbody"></tbody>
-    </table>
+      <table>
+        <thead id="items-thead"></thead>
+        <tbody id="items-tbody"></tbody>
+      </table>
     </div>
   </div>
 
   <div class="resize-handle" id="rh-1"></div>
 
   <!-- ── Log panel ── -->
-  <div class="log-panel" id="panel-logs" style="flex:2">
+  <div id="panel-logs" style="flex:2;display:flex;flex-direction:column;overflow:hidden;min-height:60px;">
     <div class="panel-header">
       <span class="ph-title">Operation Logs</span>
     </div>
@@ -427,6 +590,7 @@
       <thead>
         <tr>
           <th>#</th>
+          <th>Collection</th>
           <th>Type</th>
           <th>Status</th>
           <th>ver</th>
@@ -456,20 +620,122 @@
 <div id="toast"></div>
 
 <script>
-// ── State ─────────────────────────────────────────────────
+// ── State ──────────────────────────────────────────────────
 let items = [];
 let logs  = [];
 let chart;
+let currentCollection = 'vehicles';
 
-// ── Chart setup ───────────────────────────────────────────
+// ── Collection config ──────────────────────────────────────
+const COLL_CONFIG = {
+  vehicles: {
+    label: 'Vehicles',
+    desc: 'Vehicle registry. Low write frequency. Eventual consistency reads OK — vehicle details rarely change.',
+    columns: ['Key','Plate','Type','Payload kg','Year','Active','ver','log#','sec.ver','sync'],
+    renderRow(item) {
+      const v = item.value || {};
+      return [
+        `<span style="color:var(--green)">${esc(item.key)}</span>`,
+        esc(v.plate||'—'),
+        `<span class="op-pill" style="background:rgba(63,185,80,.1);color:var(--green)">${esc(v.vehicle_type||'—')}</span>`,
+        esc(v.max_payload_kg??'—'),
+        esc(v.manufacture_year??'—'),
+        v.is_active?'<span style="color:var(--green)">yes</span>':'<span style="color:var(--red)">no</span>',
+      ];
+    },
+  },
+  drivers: {
+    label: 'Drivers',
+    desc: 'Driver profiles. Compound index on assigned_vehicle_id for dispatch look-up.',
+    columns: ['Key','Name','License','Phone','Assigned Vehicle','ver','log#','sec.ver','sync'],
+    renderRow(item) {
+      const v = item.value || {};
+      return [
+        `<span style="color:var(--blue)">${esc(item.key)}</span>`,
+        esc(v.name||'—'),
+        `<span class="op-pill" style="background:rgba(88,166,255,.1);color:var(--blue)">${esc(v.license_class||'—')}</span>`,
+        esc(v.phone||'—'),
+        esc(v.assigned_vehicle_id||'—'),
+      ];
+    },
+  },
+  depots: {
+    label: 'Depots',
+    desc: 'Depot/warehouse locations. Near-static — ideal for secondary reads (city-based routing).',
+    columns: ['Key','Name','City','Lat','Lng','Capacity','ver','log#','sec.ver','sync'],
+    renderRow(item) {
+      const v = item.value || {};
+      return [
+        `<span style="color:var(--orange)">${esc(item.key)}</span>`,
+        esc(v.name||'—'),
+        esc(v.city||'—'),
+        esc(v.lat??'—'),
+        esc(v.lng??'—'),
+        esc(v.capacity_vehicles??'—'),
+      ];
+    },
+  },
+  shipments: {
+    label: 'Shipments',
+    desc: 'Cargo shipments. Status changes frequently. Monotonic Reads experiment: secondary version must never go backwards.',
+    columns: ['Key','Origin&#x2192;Dest','Customer','Status','Weight','Pkgs','ver','log#','sec.ver','sync'],
+    renderRow(item) {
+      const v = item.value || {};
+      const sc = {pending:'var(--yellow)',in_transit:'var(--blue)',delivered:'var(--green)',cancelled:'var(--red)'}[v.status]||'var(--muted)';
+      return [
+        `<span style="color:var(--purple)">${esc(item.key)}</span>`,
+        `${esc(v.origin_depot||'—')} &#x2192; ${esc(v.destination_depot||'—')}`,
+        esc(v.customer||'—'),
+        `<span class="op-pill" style="background:${sc}22;color:${sc}">${esc(v.status||'—')}</span>`,
+        esc(v.weight_kg??'—'),
+        esc(v.package_count??'—'),
+      ];
+    },
+  },
+  positions: {
+    label: 'Positions',
+    desc: 'Live GPS stream. Highest write frequency. Secondary reads for fleet overview — stale by a few hundred ms is fine.',
+    columns: ['Key','Vehicle','Lat','Lng','City','Speed km/h','ver','log#','sec.ver','sync'],
+    renderRow(item) {
+      const v = item.value || {};
+      return [
+        `<span style="color:var(--yellow)">${esc(item.key)}</span>`,
+        esc(v.vehicle_id||'—'),
+        esc(v.lat??'—'),
+        esc(v.lng??'—'),
+        esc(v.city||'—'),
+        esc(v.speed_kmh??'—'),
+      ];
+    },
+  },
+  incidents: {
+    label: 'Incidents',
+    desc: 'Safety incidents. Read-After-Write required — dispatcher must see their own write immediately (reads from PRIMARY).',
+    columns: ['Key','Vehicle','Type','Severity','Resolved','Description','ver','log#','sec.ver','sync'],
+    renderRow(item) {
+      const v = item.value || {};
+      const sc = {critical:'var(--red)',high:'var(--orange)',medium:'var(--yellow)',low:'var(--muted)'}[v.severity]||'var(--muted)';
+      return [
+        `<span style="color:var(--red)">${esc(item.key)}</span>`,
+        esc(v.vehicle_id||'—'),
+        esc(v.incident_type||'—'),
+        `<span class="op-pill" style="background:${sc}22;color:${sc}">${esc(v.severity||'—')}</span>`,
+        v.resolved?'<span style="color:var(--green)">yes</span>':'<span style="color:var(--red)">open</span>',
+        `<span style="color:var(--muted);font-size:10px">${esc((v.description||'').slice(0,28))}</span>`,
+      ];
+    },
+  },
+};
+
+// ── Chart setup ────────────────────────────────────────────
 function initChart() {
   const ctx = document.getElementById('delay-chart').getContext('2d');
   chart = new Chart(ctx, {
     type: 'line',
     data: { labels: [], datasets: [
-      { label: 'insert', data: [], borderColor: '#3fb950', backgroundColor: 'rgba(63,185,80,.1)', pointRadius: 3, tension: 0.3 },
+      { label: 'insert', data: [], borderColor: '#3fb950', backgroundColor: 'rgba(63,185,80,.1)',  pointRadius: 3, tension: 0.3 },
       { label: 'update', data: [], borderColor: '#58a6ff', backgroundColor: 'rgba(88,166,255,.1)', pointRadius: 3, tension: 0.3 },
-      { label: 'delete', data: [], borderColor: '#f85149', backgroundColor: 'rgba(248,81,73,.1)', pointRadius: 3, tension: 0.3 },
+      { label: 'delete', data: [], borderColor: '#f85149', backgroundColor: 'rgba(248,81,73,.1)',  pointRadius: 3, tension: 0.3 },
     ]},
     options: {
       responsive: true, maintainAspectRatio: false, animation: false,
@@ -487,8 +753,7 @@ function initChart() {
 
 function updateChart(logData) {
   const ops = [...logData].reverse();
-  const labels = ops.map(l => `#${l.log_index}`);
-  chart.data.labels = labels;
+  chart.data.labels = ops.map(l => `#${l.log_index}`);
   const byType = { insert: [], update: [], delete: [] };
   ops.forEach(l => {
     Object.keys(byType).forEach(op => {
@@ -501,20 +766,50 @@ function updateChart(logData) {
   chart.update();
 }
 
+// ── Collection switching ───────────────────────────────────
+function setCollection(name) {
+  currentCollection = name;
+
+  // Update tab styles
+  document.querySelectorAll('.coll-tab').forEach(t => t.classList.remove('active'));
+  document.querySelector(`.coll-tab[data-coll="${name}"]`).classList.add('active');
+
+  // Description
+  const cfg = COLL_CONFIG[name];
+  document.getElementById('coll-desc').textContent = cfg ? cfg.desc : '';
+
+  // Show correct fleet insert form
+  document.querySelectorAll('.fleet-form').forEach(f => f.classList.remove('active'));
+  const ff = document.getElementById(`ins-${name}`);
+  if (ff) ff.classList.add('active');
+
+  // Data panel title
+  document.getElementById('data-panel-title').textContent = `${cfg ? cfg.label : name} (latest 50)`;
+
+  refreshItems();
+}
+
 // ── Percentile helper ──────────────────────────────────────
-function percentile(arr, p) {
+function pct(arr, p) {
   if (!arr.length) return null;
   const s = [...arr].sort((a, b) => a - b);
-  const idx = Math.ceil((p / 100) * s.length) - 1;
-  return s[Math.max(0, idx)];
+  return s[Math.max(0, Math.ceil((p / 100) * s.length) - 1)];
 }
 
 // ── Render items table ─────────────────────────────────────
 function renderItems(data) {
+  const cfg = COLL_CONFIG[currentCollection];
+  const thead = document.getElementById('items-thead');
   const tbody = document.getElementById('items-tbody');
-  tbody.innerHTML = '';
 
-  // Refresh selects
+  if (cfg) {
+    thead.innerHTML = '<tr>' + cfg.columns.map(c => {
+      const style = c === 'sec.ver' ? ' style="color:var(--blue)"' : '';
+      return `<th${style}>${c}</th>`;
+    }).join('') + '</tr>';
+  }
+
+  tbody.innerHTML = '';
   const updSel = document.getElementById('upd-id');
   const delSel = document.getElementById('del-id');
   const prevUpd = updSel.value, prevDel = delSel.value;
@@ -524,29 +819,31 @@ function renderItems(data) {
   data.forEach(item => {
     const tr = document.createElement('tr');
     if (item.deleted) tr.classList.add('deleted-row');
-    const syncIcon = item.synced ? '<span class="sync-icon" title="synced">✓</span>'
-                                 : '<span class="sync-icon" style="color:var(--red)" title="lag">⚡</span>';
-    const secVer = item.secondary_version !== null ? item.secondary_version : '<span style="color:var(--red)">—</span>';
-    const val = JSON.stringify(item.value).slice(0, 40);
-    const ts = item.last_updated ? item.last_updated.replace('T',' ').slice(0,19) : '—';
-    tr.innerHTML = `
-      <td style="color:var(--orange)">${escHtml(item.key)}</td>
-      <td style="color:var(--muted)">${escHtml(val)}</td>
-      <td style="color:var(--purple);font-weight:700">${item.version}</td>
-      <td style="color:var(--muted)">${item.leader_term ?? '—'}</td>
-      <td style="color:var(--muted)">${item.log_index ?? '—'}</td>
-      <td style="color:var(--muted);font-size:10px">${item.operation_id}…</td>
-      <td>${item.deleted ? '<span style="color:var(--red)">true</span>' : '<span style="color:var(--muted)">false</span>'}</td>
-      <td style="color:var(--muted);font-size:11px">${ts}</td>
-      <td style="color:var(--blue);font-weight:700">${secVer}</td>
-      <td>${syncIcon}</td>`;
+
+    const syncIcon = item.synced
+      ? '<span class="sync-icon" title="synced">&#x2713;</span>'
+      : '<span class="sync-icon" style="color:var(--red)" title="lag">&#x26A1;</span>';
+    const secVer = item.secondary_version !== null
+      ? `<span style="color:var(--blue);font-weight:700">${item.secondary_version}</span>`
+      : '<span style="color:var(--red)">—</span>';
+
+    let domainCells = '';
+    if (cfg) {
+      domainCells = cfg.renderRow(item).map(c => `<td>${c}</td>`).join('');
+    }
+
+    tr.innerHTML = domainCells
+      + `<td style="color:var(--purple);font-weight:700">${item.version}</td>`
+      + `<td style="color:var(--muted)">${item.log_index ?? '—'}</td>`
+      + `<td>${secVer}</td>`
+      + `<td>${syncIcon}</td>`;
+
     tbody.appendChild(tr);
 
     if (!item.deleted) {
-      const opt1 = new Option(`${item.key} (v${item.version}) — ${item.id.slice(-6)}`, item.id);
-      const opt2 = new Option(`${item.key} (v${item.version}) — ${item.id.slice(-6)}`, item.id);
-      updSel.appendChild(opt1);
-      delSel.appendChild(opt2);
+      const lbl = `${item.key} (v${item.version})`;
+      updSel.appendChild(new Option(lbl, item.id));
+      delSel.appendChild(new Option(lbl, item.id));
     }
   });
 
@@ -557,33 +854,27 @@ function renderItems(data) {
 // ── Render logs table ──────────────────────────────────────
 function renderLogs(data) {
   const tbody = document.getElementById('logs-tbody');
+  if (!Array.isArray(data) || !data.length) {
+    tbody.innerHTML = `<tr><td colspan="8" style="padding:16px;color:var(--muted);font-size:12px">${!Array.isArray(data) ? 'Unexpected response' : 'No logs yet'}</td></tr>`;
+    return;
+  }
   tbody.innerHTML = '';
-
-  if (!Array.isArray(data)) {
-    renderLogMessage('Log endpoint returned an unexpected response', 'var(--red)');
-    return;
-  }
-
-  if (!data.length) {
-    renderLogMessage('No operation logs found', 'var(--muted)');
-    return;
-  }
-
   data.forEach(log => {
     const tr = document.createElement('tr');
     const delay = log.replication_delay_ms !== null
       ? `<span style="color:var(--orange);font-weight:700">${log.replication_delay_ms?.toFixed(2)}</span>`
       : (log.status === 'pending_follower'
-        ? '<span style="color:var(--yellow)">pending</span>'
-        : '<span style="color:var(--red)">timeout</span>');
+          ? '<span style="color:var(--yellow)">pending</span>'
+          : '<span style="color:var(--red)">timeout</span>');
     const lw = log.leader_write_time ? log.leader_write_time.replace('T',' ').slice(11,23) : '—';
     const fw = log.follower_visible_time ? log.follower_visible_time.replace('T',' ').slice(11,23) : '<span style="color:var(--red)">—</span>';
-    const ver = `${log.version_before ?? '—'} → ${log.version_after ?? '—'}`;
+    const coll = log.target_collection || 'items';
     tr.innerHTML = `
       <td style="color:var(--muted)">${log.log_index}</td>
+      <td><span class="coll-pill coll-${coll}">${coll}</span></td>
       <td><span class="op-pill pill-${log.operation_type}">${log.operation_type}</span></td>
       <td><span class="op-pill pill-${log.status}">${log.status}</span></td>
-      <td style="color:var(--purple)">${ver}</td>
+      <td style="color:var(--purple)">${log.version_before??'—'} &#x2192; ${log.version_after??'—'}</td>
       <td>${delay}</td>
       <td style="color:var(--muted);font-size:11px">${lw}</td>
       <td style="color:var(--muted);font-size:11px">${fw}</td>`;
@@ -591,27 +882,15 @@ function renderLogs(data) {
   });
 }
 
-function renderLogMessage(message, color) {
-  const tbody = document.getElementById('logs-tbody');
-  tbody.innerHTML = `
-    <tr>
-      <td colspan="7" style="padding:16px;color:${color};font-size:12px">${escHtml(message)}</td>
-    </tr>`;
-}
-
 // ── Stats ──────────────────────────────────────────────────
 function updateStats(logData) {
   const delays = logData.filter(l => l.replication_delay_ms !== null).map(l => l.replication_delay_ms);
   const timeouts = logData.filter(l => l.status === 'timeout').length;
-
   document.getElementById('stat-total').textContent = logData.length;
   document.getElementById('stat-timeouts').textContent = timeouts;
-  const p50 = percentile(delays, 50);
-  const p95 = percentile(delays, 95);
+  const p50 = pct(delays, 50), p95 = pct(delays, 95);
   document.getElementById('stat-p50').textContent = p50 ? p50.toFixed(1)+' ms' : '—';
   document.getElementById('stat-p95').textContent = p95 ? p95.toFixed(1)+' ms' : '—';
-
-  // Stat cards
   const min_ = delays.length ? Math.min(...delays) : null;
   const avg_ = delays.length ? delays.reduce((a,b)=>a+b,0)/delays.length : null;
   const max_ = delays.length ? Math.max(...delays) : null;
@@ -620,11 +899,9 @@ function updateStats(logData) {
   document.getElementById('sc-p95').textContent = p95 ? p95.toFixed(1)+' ms' : '—';
   document.getElementById('sc-max').textContent = max_ ? max_.toFixed(1)+' ms' : '—';
 
-  // By op type
-  const types = ['insert','update','delete'];
   const breakdown = document.getElementById('op-breakdown');
   breakdown.innerHTML = '';
-  types.forEach(op => {
+  ['insert','update','delete'].forEach(op => {
     const d = logData.filter(l => l.operation_type === op && l.replication_delay_ms !== null).map(l => l.replication_delay_ms);
     const count = logData.filter(l => l.operation_type === op).length;
     if (!count) return;
@@ -643,302 +920,288 @@ function updateStats(logData) {
 async function refreshStatus() {
   try {
     const res = await fetch('/api/status');
-    const status = await res.json();
-    renderStatus(status);
+    renderStatus(await res.json());
   } catch(e) {
-    renderStatus({
-      primary: { reachable: false, writable: false, host: 'mongo-primary.lan:27017', error: e.message },
-      secondary: { reachable: false, secondary: false, host: 'mongo-secondary.lan:27017', error: e.message },
-      secondary_health: { reachable: false, last_error: e.message },
-    });
+    renderStatus({ primary:{reachable:false,writable:false,host:'—',error:e.message}, secondary:{reachable:false}, secondary_health:{reachable:false,last_error:e.message} });
   }
 }
 
 function renderStatus(status) {
   const primary = status.primary || {};
-  const secondary = status.secondary || {};
-  const health = status.secondary_health || {};
-
-  document.getElementById('hdr-primary').textContent = primary.host || 'mongo-primary.lan:27017';
-  document.getElementById('hdr-secondary').textContent = secondary.host || 'mongo-secondary.lan:27017';
-
-  paintBadge('badge-primary', primary.reachable && primary.writable, 'green');
-  paintBadge('badge-secondary', health.reachable || secondary.reachable, 'blue');
-
-  const reachable = Boolean(health.reachable || secondary.reachable);
+  const health  = status.secondary_health || {};
+  document.getElementById('hdr-primary').textContent   = primary.host || '—';
+  document.getElementById('hdr-secondary').textContent = (status.secondary||{}).host || '—';
+  paintBadge('badge-primary',   primary.reachable && primary.writable, 'green');
+  paintBadge('badge-secondary', Boolean(health.reachable || (status.secondary||{}).reachable), 'blue');
+  const reachable = Boolean(health.reachable || (status.secondary||{}).reachable);
   const primaryOk = Boolean(primary.reachable && primary.writable);
-  const pending = health.pending_count ?? 0;
-  const stateEl = document.getElementById('health-state');
+  const pending   = health.pending_count ?? 0;
+  const stateEl   = document.getElementById('health-state');
   stateEl.textContent = !primaryOk ? 'NO PRIMARY' : (reachable ? (pending > 0 ? 'CATCHING' : 'UP') : 'DOWN');
   stateEl.style.color = !primaryOk ? 'var(--red)' : (reachable ? (pending > 0 ? 'var(--yellow)' : 'var(--green)') : 'var(--red)');
-
   const pendingEl = document.getElementById('health-pending');
   pendingEl.textContent = pending;
   pendingEl.style.color = pending > 0 ? 'var(--yellow)' : 'var(--green)';
-
   document.getElementById('health-reconciled').textContent = health.last_reconcile_count ?? 0;
   document.getElementById('health-checked').textContent = shortTime(health.last_checked_at);
-
   const err = document.getElementById('health-error');
-  if (!primaryOk && primary.error) {
-    err.textContent = `Primary unavailable: ${primary.error}`.slice(0, 220);
-    err.style.display = 'block';
-  } else if (!reachable && health.last_error) {
-    err.textContent = health.last_error.slice(0, 180);
-    err.style.display = 'block';
-  } else {
-    err.style.display = 'none';
-  }
+  if (!primaryOk && primary.error) { err.textContent = `Primary unavailable: ${primary.error}`.slice(0,220); err.style.display='block'; }
+  else if (!reachable && health.last_error) { err.textContent = health.last_error.slice(0,180); err.style.display='block'; }
+  else { err.style.display='none'; }
 }
 
 function paintBadge(id, ok, colorName) {
-  const el = document.getElementById(id);
+  const el  = document.getElementById(id);
   const dot = el.querySelector('.dot');
-  const color = ok ? `var(--${colorName})` : 'var(--red)';
-  el.style.borderColor = color;
-  el.style.color = color;
-  dot.style.background = color;
-  dot.style.boxShadow = `0 0 6px ${color}`;
+  const c   = ok ? `var(--${colorName})` : 'var(--red)';
+  el.style.borderColor = dot.style.background = c;
+  el.style.color = c;
+  dot.style.boxShadow = `0 0 6px ${c}`;
 }
 
-function shortTime(value) {
-  if (!value) return '—';
-  return String(value).replace('T',' ').slice(11,19);
-}
+function shortTime(v) { return v ? String(v).replace('T',' ').slice(11,19) : '—'; }
 
 async function refreshItems() {
   try {
-    const res = await fetch('/api/items');
+    const res = await fetch(`/api/items?collection=${currentCollection}`);
     items = await res.json();
     renderItems(items);
-  } catch(e) {
-    items = [];
-  }
+  } catch(e) { items = []; }
 }
 
 async function refreshLogs() {
   try {
-    const res = await fetch('/api/logs');
+    const res  = await fetch('/api/logs');
     const data = await res.json();
-    if (!res.ok || !Array.isArray(data)) {
-      const msg = data?.error || `Log request failed (${res.status})`;
-      renderLogMessage(msg, 'var(--red)');
-      return;
-    }
+    if (!res.ok || !Array.isArray(data)) { renderLogs(null); return; }
     logs = data;
-    renderLogs(logs);
-    updateStats(logs);
-    updateChart(logs);
-  } catch(e) {
-    renderLogMessage(e.message, 'var(--red)');
-  }
+    renderLogs(logs); updateStats(logs); updateChart(logs);
+  } catch(e) { renderLogs(null); }
 }
 
 function refreshAll() { refreshStatus(); refreshItems(); refreshLogs(); }
 
-// ── Operations ─────────────────────────────────────────────
+// ── Write operations ───────────────────────────────────────
 async function apiFetch(url, body) {
-  const controller = new AbortController();
-  const tid = setTimeout(() => controller.abort(), 12000);
+  const ctrl = new AbortController();
+  const tid  = setTimeout(() => ctrl.abort(), 12000);
   try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
+    const res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body), signal: ctrl.signal });
     clearTimeout(tid);
     return await res.json();
   } catch(e) {
     clearTimeout(tid);
-    return {ok: false, error: e.name === 'AbortError' ? 'Request timed out (>12s)' : e.message};
+    return {ok:false, error: e.name==='AbortError' ? 'Request timed out (>12s)' : e.message};
   }
 }
 
-async function doInsert() {
-  const key = document.getElementById('ins-key').value.trim() || 'item';
-  let value;
-  try { value = JSON.parse(document.getElementById('ins-val').value); }
-  catch { showResult('insert', '<span class="err">Invalid JSON</span>'); return; }
+function buildFleetPayload() {
+  const c = currentCollection;
+  let key, value;
+  switch (c) {
+    case 'vehicles': {
+      const id = document.getElementById('vhc-id').value.trim();
+      key = `VHC-${id}`;
+      value = { vehicle_id:id, plate:document.getElementById('vhc-plate').value.trim(), vehicle_type:document.getElementById('vhc-type').value, max_payload_kg:+document.getElementById('vhc-payload').value, manufacture_year:+document.getElementById('vhc-year').value, is_active:true };
+      break;
+    }
+    case 'drivers': {
+      const id = document.getElementById('drv-id').value.trim();
+      key = `DRV-${id}`;
+      value = { driver_id:id, name:document.getElementById('drv-name').value.trim(), license_class:document.getElementById('drv-license').value, phone:document.getElementById('drv-phone').value.trim(), assigned_vehicle_id:document.getElementById('drv-vehicle').value.trim()||null };
+      break;
+    }
+    case 'depots': {
+      const id = document.getElementById('dep-id').value.trim();
+      key = `DEP-${id}`;
+      value = { depot_id:id, name:document.getElementById('dep-name').value.trim(), city:document.getElementById('dep-city').value.trim(), lat:+document.getElementById('dep-lat').value, lng:+document.getElementById('dep-lng').value, capacity_vehicles:+document.getElementById('dep-cap').value };
+      break;
+    }
+    case 'shipments': {
+      const id = document.getElementById('shp-id').value.trim();
+      key = `SHP-${id}`;
+      value = { shipment_id:id, origin_depot:document.getElementById('shp-origin').value.trim(), destination_depot:document.getElementById('shp-dest').value.trim(), customer:document.getElementById('shp-customer').value.trim(), weight_kg:+document.getElementById('shp-weight').value, package_count:+document.getElementById('shp-pkgs').value, status:document.getElementById('shp-status').value, assigned_vehicle_id:document.getElementById('shp-vehicle').value.trim()||null };
+      break;
+    }
+    case 'positions': {
+      const vid = document.getElementById('pos-vehicle').value.trim();
+      key = `POS-${vid}-${Date.now()}`;
+      value = { vehicle_id:vid, lat:+document.getElementById('pos-lat').value, lng:+document.getElementById('pos-lng').value, city:document.getElementById('pos-city').value.trim(), district:document.getElementById('pos-district').value.trim(), speed_kmh:+document.getElementById('pos-speed').value };
+      break;
+    }
+    case 'incidents': {
+      const vid = document.getElementById('inc-vehicle').value.trim();
+      key = `INC-${vid}-${Date.now()}`;
+      value = { vehicle_id:vid, incident_type:document.getElementById('inc-type').value, severity:document.getElementById('inc-severity').value, description:document.getElementById('inc-desc').value.trim(), resolved:false };
+      break;
+    }
+    default: return null;
+  }
+  return { key, value, collection: c };
+}
 
-  showResult('insert', '<span style="color:var(--muted)">Inserting…</span>');
-  const data = await apiFetch('/api/insert', {key, value});
+async function doFleetInsert() {
+  const payload = buildFleetPayload();
+  if (!payload) return;
+  showResult('insert', '<span style="color:var(--muted)">Inserting...</span>');
+  const data = await apiFetch('/api/insert', payload);
   if (data.ok) {
-    const msg = formatWriteResult(data, `id: …${data.item_id.slice(-8)}`);
+    const msg = fmtResult(data, `id:...${data.item_id.slice(-8)}`);
     showResult('insert', msg.html);
-    toast(`Insert: ${msg.toast}`);
+    toast(`Insert [${currentCollection}]: ${msg.toast}`);
     refreshAll();
   } else {
-    showResult('insert', `<span class="err">✗ ${data.error}</span>`);
+    showResult('insert', `<span class="err">&#x2717; ${esc(data.error)}</span>`);
   }
 }
 
 async function doUpdate() {
   const item_id = document.getElementById('upd-id').value;
-  if (!item_id) { showResult('update', '<span class="err">Select an item</span>'); return; }
+  if (!item_id) { showResult('update','<span class="err">Select an item</span>'); return; }
   let value;
   try { value = JSON.parse(document.getElementById('upd-val').value); }
-  catch { showResult('update', '<span class="err">Invalid JSON</span>'); return; }
-
-  showResult('update', '<span style="color:var(--muted)">Updating…</span>');
-  const data = await apiFetch('/api/update', {item_id, value});
-  if (data.ok) {
-    const msg = formatWriteResult(data);
-    showResult('update', msg.html);
-    toast(`Update: ${msg.toast}`);
-    refreshAll();
-  } else {
-    showResult('update', `<span class="err">✗ ${data.error}</span>`);
-  }
+  catch { showResult('update','<span class="err">Invalid JSON</span>'); return; }
+  showResult('update', '<span style="color:var(--muted)">Updating...</span>');
+  const data = await apiFetch('/api/update', {item_id, value, collection:currentCollection});
+  if (data.ok) { const msg=fmtResult(data); showResult('update',msg.html); toast(`Update [${currentCollection}]: ${msg.toast}`); refreshAll(); }
+  else { showResult('update',`<span class="err">&#x2717; ${esc(data.error)}</span>`); }
 }
 
 async function doDelete() {
   const item_id = document.getElementById('del-id').value;
-  if (!item_id) { showResult('delete', '<span class="err">Select an item</span>'); return; }
+  if (!item_id) { showResult('delete','<span class="err">Select an item</span>'); return; }
+  showResult('delete', '<span style="color:var(--muted)">Deleting...</span>');
+  const data = await apiFetch('/api/delete', {item_id, collection:currentCollection});
+  if (data.ok) { const msg=fmtResult(data); showResult('delete',msg.html); toast(`Delete [${currentCollection}]: ${msg.toast}`); refreshAll(); }
+  else { showResult('delete',`<span class="err">&#x2717; ${esc(data.error)}</span>`); }
+}
 
-  showResult('delete', '<span style="color:var(--muted)">Deleting…</span>');
-  const data = await apiFetch('/api/delete', {item_id});
-  if (data.ok) {
-    const msg = formatWriteResult(data);
-    showResult('delete', msg.html);
-    toast(`Delete: ${msg.toast}`);
-    refreshAll();
-  } else {
-    showResult('delete', `<span class="err">✗ ${data.error}</span>`);
-  }
+// ── Access Pattern queries ─────────────────────────────────
+async function apQuery(endpoint, resultId) {
+  const el = document.getElementById(resultId);
+  el.classList.add('show');
+  el.innerHTML = '<span style="color:var(--muted)">Querying...</span>';
+  try {
+    const res  = await fetch(`/api/${endpoint}`);
+    const data = await res.json();
+    if (!data.ok) { el.innerHTML=`<span style="color:var(--red)">&#x2717; ${esc(data.error||'Error')}</span>`; return; }
+    const src = data.source==='primary'
+      ? '<span class="ap-src-p">PRIMARY</span>'
+      : '<span class="ap-src-s">SECONDARY</span>';
+    const rows = Array.isArray(data.data) ? data.data : (data.data ? [data.data] : []);
+    if (!rows.length) { el.innerHTML=`${src} &nbsp;No results`; return; }
+    const lines = rows.slice(0,5).map(row => {
+      if (row && row.vehicle) {
+        const v = row.vehicle.value || {};
+        const p = row.latest_position ? (row.latest_position.value || {}) : null;
+        return `${v.vehicle_id||'?'} [${v.vehicle_type||'?'}] ${v.plate||'?'}${p?' @ '+p.city+' '+p.speed_kmh+'km/h':' (no pos)'}`;
+      }
+      return JSON.stringify(row.value || row).slice(0,80);
+    });
+    el.innerHTML = `${src} &nbsp;${rows.length} result(s):<br>${lines.map(l=>esc(l)).join('<br>')}`;
+  } catch(e) { el.innerHTML=`<span style="color:var(--red)">&#x2717; ${esc(e.message)}</span>`; }
+}
+
+async function apQueryV(endpoint, resultId) {
+  const vid = (document.getElementById('ap-vid').value||'TRK-001').trim();
+  await apQuery(`${endpoint}/${encodeURIComponent(vid)}`, resultId);
 }
 
 // ── UI helpers ─────────────────────────────────────────────
 function setTab(op) {
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.op-form').forEach(f => f.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.op-form').forEach(f=>f.classList.remove('active'));
   document.querySelector(`.tab.${op}`).classList.add('active');
   document.getElementById(`form-${op}`).classList.add('active');
 }
 
 function showResult(op, html) {
   const el = document.getElementById(`res-${op}`);
-  el.innerHTML = html;
-  el.classList.add('show');
+  el.innerHTML = html; el.classList.add('show');
 }
 
-function formatWriteResult(data, suffix='') {
-  if (data.status === 'pending_follower') {
-    return {
-      html: `<span style="color:var(--yellow);font-weight:700">queued on leader</span>${suffix ? ` &nbsp;<span style="color:var(--muted)">${suffix}</span>` : ''}`,
-      toast: 'queued on leader',
-    };
-  }
-  if (data.delay_ms !== null && data.delay_ms !== undefined) {
-    return {
-      html: `<span class="delay">✓ ${data.delay_ms.toFixed(2)} ms</span>${suffix ? ` &nbsp;<span style="color:var(--muted)">${suffix}</span>` : ''}`,
-      toast: `${data.delay_ms.toFixed(2)} ms`,
-    };
-  }
-  return {
-    html: `<span class="err">timeout</span>${suffix ? ` &nbsp;<span style="color:var(--muted)">${suffix}</span>` : ''}`,
-    toast: 'timeout',
-  };
+function fmtResult(data, suffix='') {
+  const suf = suffix ? ` &nbsp;<span style="color:var(--muted)">${suffix}</span>` : '';
+  if (data.status === 'pending_follower') return { html:`<span style="color:var(--yellow);font-weight:700">queued on leader</span>${suf}`, toast:'queued on leader' };
+  if (data.delay_ms != null) return { html:`<span class="delay">&#x2713; ${data.delay_ms.toFixed(2)} ms</span>${suf}`, toast:`${data.delay_ms.toFixed(2)} ms` };
+  return { html:`<span class="err">timeout</span>${suf}`, toast:'timeout' };
 }
 
 function toast(msg) {
   const el = document.getElementById('toast');
-  el.textContent = msg;
-  el.classList.add('show');
-  setTimeout(() => el.classList.remove('show'), 2500);
+  el.textContent = msg; el.classList.add('show');
+  setTimeout(()=>el.classList.remove('show'), 2500);
 }
 
-function escHtml(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
 // ── Write Concern ──────────────────────────────────────────
 async function setWriteConcern(w) {
-  const res = await fetch('/api/write-concern', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({w}),
-  });
+  const res  = await fetch('/api/write-concern', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({w}) });
   const data = await res.json();
-  if (data.ok) applyWriteConcernUI(data.write_concern);
+  if (data.ok) applyWcUI(data.write_concern);
 }
 
-function applyWriteConcernUI(wc) {
-  const isAsync = wc === '1';
-  const btnMaj = document.getElementById('wc-majority');
-  const btn1   = document.getElementById('wc-1');
-  const info   = document.getElementById('wc-info');
-
-  btnMaj.style.background = isAsync ? 'var(--bg)' : 'rgba(63,185,80,.15)';
-  btnMaj.style.color      = isAsync ? 'var(--muted)' : 'var(--green)';
-  btnMaj.style.borderColor = isAsync ? 'var(--border)' : 'var(--green)';
-
-  btn1.style.background  = isAsync ? 'rgba(240,136,62,.15)' : 'var(--bg)';
-  btn1.style.color       = isAsync ? 'var(--orange)' : 'var(--muted)';
-  btn1.style.borderColor = isAsync ? 'var(--orange)' : 'var(--border)';
-
-  info.innerHTML = isAsync
-    ? '<strong style="color:var(--orange)">w=1 (async)</strong>: primary returns immediately without waiting for secondary. Disconnect secondary\'s network and insert — data appears on primary but not on secondary. Reconnect to watch catch-up.'
-    : '<strong style="color:var(--green)">w=majority</strong>: write blocks until secondary ACKs — appears synchronous.<br>Switch to <strong style="color:var(--orange)">w=1</strong> to make writes fire-and-forget (true async).';
+function applyWcUI(wc) {
+  const async = wc === '1';
+  const bMaj  = document.getElementById('wc-majority');
+  const b1    = document.getElementById('wc-1');
+  const info  = document.getElementById('wc-info');
+  bMaj.style.background  = async ? 'var(--bg)' : 'rgba(63,185,80,.15)';
+  bMaj.style.color       = async ? 'var(--muted)' : 'var(--green)';
+  bMaj.style.borderColor = async ? 'var(--border)' : 'var(--green)';
+  b1.style.background    = async ? 'rgba(240,136,62,.15)' : 'var(--bg)';
+  b1.style.color         = async ? 'var(--orange)' : 'var(--muted)';
+  b1.style.borderColor   = async ? 'var(--orange)' : 'var(--border)';
+  info.innerHTML = async
+    ? '<strong style="color:var(--orange)">w=1 (async)</strong>: primary returns immediately. Disconnect secondary, insert — data appears only on primary. Reconnect to watch catch-up.'
+    : '<strong style="color:var(--green)">w=majority</strong>: write blocks until secondary ACKs.<br>Switch to <strong style="color:var(--orange)">w=1</strong> for fire-and-forget async.';
 }
 
-async function initWriteConcern() {
-  const res = await fetch('/api/write-concern');
+async function initWc() {
+  const res  = await fetch('/api/write-concern');
   const data = await res.json();
-  if (data.ok) applyWriteConcernUI(data.write_concern);
+  if (data.ok) applyWcUI(data.write_concern);
 }
 
 // ── Drag resize ────────────────────────────────────────────
 function initResizers() {
-  makeResizer('rh-1', 'panel-items', 'panel-logs');
-  makeResizer('rh-2', 'panel-logs',  'panel-chart');
+  mkResizer('rh-1','panel-items','panel-logs');
+  mkResizer('rh-2','panel-logs','panel-chart');
 }
 
-function makeResizer(handleId, topId, bottomId) {
-  const handle = document.getElementById(handleId);
-  const top    = document.getElementById(topId);
-  const bottom = document.getElementById(bottomId);
-
-  handle.addEventListener('mousedown', e => {
+function mkResizer(hid, topId, botId) {
+  const h = document.getElementById(hid);
+  const t = document.getElementById(topId);
+  const b = document.getElementById(botId);
+  h.addEventListener('mousedown', e => {
     e.preventDefault();
-    const startY   = e.clientY;
-    const startTopH    = top.getBoundingClientRect().height;
-    const startBottomH = bottom.getBoundingClientRect().height;
-
-    handle.classList.add('dragging');
-    document.body.style.cursor    = 'row-resize';
-    document.body.style.userSelect = 'none';
-
-    function onMove(e) {
-      const dy = e.clientY - startY;
-      const newTop    = Math.max(60, startTopH + dy);
-      const newBottom = Math.max(60, startBottomH - dy);
-      top.style.flex    = 'none';
-      top.style.height  = newTop + 'px';
-      bottom.style.flex   = 'none';
-      bottom.style.height = newBottom + 'px';
-      if (bottomId === 'panel-chart') chart.resize();
+    const sy=e.clientY, sth=t.getBoundingClientRect().height, sbh=b.getBoundingClientRect().height;
+    h.classList.add('dragging');
+    document.body.style.cursor='row-resize'; document.body.style.userSelect='none';
+    function mv(e) {
+      const dy=e.clientY-sy;
+      t.style.flex='none'; t.style.height=Math.max(60,sth+dy)+'px';
+      b.style.flex='none'; b.style.height=Math.max(60,sbh-dy)+'px';
+      if (botId==='panel-chart') chart.resize();
     }
-
-    function onUp() {
-      handle.classList.remove('dragging');
-      document.body.style.cursor    = '';
-      document.body.style.userSelect = '';
+    function up() {
+      h.classList.remove('dragging');
+      document.body.style.cursor=''; document.body.style.userSelect='';
       chart.resize();
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup',   onUp);
+      document.removeEventListener('mousemove',mv); document.removeEventListener('mouseup',up);
     }
-
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup',   onUp);
+    document.addEventListener('mousemove',mv); document.addEventListener('mouseup',up);
   });
 }
 
 // ── Init ───────────────────────────────────────────────────
 initChart();
 initResizers();
-initWriteConcern();
-refreshAll();
+initWc();
+setCollection('vehicles');
+refreshStatus();
+refreshLogs();
 setInterval(refreshAll, 4000);
 </script>
 </body>

@@ -68,7 +68,8 @@ benchmark-reader: install
 
 clean: install
 	$(PYTHON) -c "\
-import db; \
+import db, config; \
 pdb = db.get_primary(); \
-[pdb[c].drop() for c in ['items','operation_logs','benchmark_results','benchmark_manifest']]; \
-print('Collections cleared.')"
+all_colls = list(config.FLEET_COLLECTIONS) + ['items','operation_logs','benchmark_results','benchmark_manifest']; \
+[pdb[c].drop() for c in all_colls]; \
+print('Collections cleared:', ', '.join(all_colls))"

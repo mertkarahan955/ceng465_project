@@ -17,7 +17,7 @@ app = Flask(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Routes
+# Helpers
 # ---------------------------------------------------------------------------
 
 def _jsonable_health(health):
@@ -28,6 +28,21 @@ def _jsonable_health(health):
         else:
             result[key] = value
     return result
+
+
+def _serialize_list(docs):
+    """Convert a list of MongoDB documents to JSON-serialisable dicts."""
+    out = []
+    for doc in docs:
+        if doc is None:
+            continue
+        out.append(operations._serialize_doc(doc))
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
 
 @app.route("/")
 def index():
@@ -69,8 +84,15 @@ def api_status():
 
 @app.route("/api/items")
 def api_items():
+    """Return the latest 50 documents from the requested collection.
+
+    Query param: ?collection=vehicles  (default: vehicles)
+    Supported: vehicles, drivers, depots, shipments, positions, incidents, items
+    """
+    collection = request.args.get("collection", "vehicles")
     pdb = db.get_primary()
-    primary_docs = list(pdb["items"].find().sort("last_updated", -1).limit(50))
+    primary_docs = list(pdb[collection].find().sort("last_updated", -1).limit(50))
+
     op_ids = [d.get("last_operation_id") for d in primary_docs if d.get("last_operation_id")]
     log_indexes = [d.get("last_log_index") for d in primary_docs if d.get("last_log_index") is not None]
     logs_by_op = {}
@@ -84,7 +106,7 @@ def api_items():
 
     try:
         sdb = db.get_secondary()
-        sec_map = {str(d["_id"]): d for d in sdb["items"].find()}
+        sec_map = {str(d["_id"]): d for d in sdb[collection].find()}
         secondary_reachable = True
         operations.mark_secondary_reachable()
     except PyMongoError:
@@ -95,14 +117,14 @@ def api_items():
     for doc in primary_docs:
         oid = str(doc["_id"])
         sec = sec_map.get(oid)
-        log = logs_by_op.get(doc.get("last_operation_id")) or logs_by_index.get((doc.get("last_log_index"), oid))
+        log = (
+            logs_by_op.get(doc.get("last_operation_id"))
+            or logs_by_index.get((doc.get("last_log_index"), oid))
+        )
         secondary_version = sec.get("version") if sec else None
         synced = sec.get("version") == doc.get("version") if sec else False
 
         if not secondary_reachable and log and log.get("status") == "visible_on_follower":
-            # Secondary is currently down, so we cannot live-read it. Preserve
-            # the last proven sync state from operation_logs; only newer
-            # pending writes should appear unsynced while the replica is down.
             synced = True
             secondary_version = log.get("version_after", doc.get("version"))
 
@@ -110,11 +132,12 @@ def api_items():
             try:
                 operations.mark_pending_logs_visible_for_item(
                     doc["_id"],
-                    sec.get("version"),
-                    sec.get("last_log_index"),
+                    sec.get("version") if sec else None,
+                    sec.get("last_log_index") if sec else None,
                 )
             except Exception:
                 pass
+
         result.append({
             "id": oid,
             "key": doc.get("key", ""),
@@ -128,6 +151,7 @@ def api_items():
             "secondary_version": secondary_version,
             "synced": synced,
             "secondary_reachable": secondary_reachable,
+            "collection": collection,
         })
     return jsonify(result)
 
@@ -149,6 +173,7 @@ def api_logs():
             "log_index": log.get("log_index"),
             "operation_id": log.get("operation_id", "")[:8],
             "operation_type": log.get("operation_type"),
+            "target_collection": log.get("target_collection", "items"),
             "status": log.get("status"),
             "replication_delay_ms": log.get("replication_delay_ms"),
             "version_before": log.get("version_before"),
@@ -176,8 +201,9 @@ def api_insert():
     data = request.json
     key = data.get("key", "item")
     value = data.get("value", {})
+    collection = data.get("collection", "items")
     try:
-        item_id, delay = insert_item(key, value)
+        item_id, delay = insert_item(key, value, collection=collection)
         status = "pending_follower" if str(operations.get_write_concern()) == "1" and delay is None else (
             "visible_on_follower" if delay is not None else "timeout"
         )
@@ -189,10 +215,11 @@ def api_insert():
 @app.route("/api/update", methods=["POST"])
 def api_update():
     data = request.json
+    collection = data.get("collection", "items")
     try:
         item_id = ObjectId(data["item_id"])
         value = data.get("value", {})
-        delay = update_item(item_id, value)
+        delay = update_item(item_id, value, collection=collection)
         status = "pending_follower" if str(operations.get_write_concern()) == "1" and delay is None else (
             "visible_on_follower" if delay is not None else "timeout"
         )
@@ -204,9 +231,10 @@ def api_update():
 @app.route("/api/delete", methods=["POST"])
 def api_delete():
     data = request.json
+    collection = data.get("collection", "items")
     try:
         item_id = ObjectId(data["item_id"])
-        delay = delete_item(item_id)
+        delay = delete_item(item_id, collection=collection)
         status = "pending_follower" if str(operations.get_write_concern()) == "1" and delay is None else (
             "visible_on_follower" if delay is not None else "timeout"
         )
@@ -216,7 +244,70 @@ def api_delete():
 
 
 # ---------------------------------------------------------------------------
+# Fleet access pattern endpoints (consistency experiment read paths)
+# ---------------------------------------------------------------------------
+
+@app.route("/api/fleet/overview")
+def api_fleet_overview():
+    """Eventual Consistency demo — reads fleet overview from SECONDARY."""
+    try:
+        result = operations.get_fleet_overview(limit=20)
+        out = []
+        for row in result:
+            out.append({
+                "vehicle": operations._serialize_doc(row["vehicle"]),
+                "latest_position": operations._serialize_doc(row["latest_position"]),
+            })
+        return jsonify({"ok": True, "source": "secondary", "data": out})
+    except PyMongoError as e:
+        return jsonify({"ok": False, "source": "secondary", "error": str(e), "data": []}), 200
+
+
+@app.route("/api/fleet/vehicle-history/<vehicle_id>")
+def api_vehicle_history(vehicle_id):
+    """Monotonic Reads demo — position history from SECONDARY."""
+    try:
+        docs = operations.get_vehicle_history(vehicle_id, limit=10)
+        return jsonify({"ok": True, "source": "secondary", "vehicle_id": vehicle_id,
+                        "data": _serialize_list(docs)})
+    except PyMongoError as e:
+        return jsonify({"ok": False, "source": "secondary", "error": str(e), "data": []}), 200
+
+
+@app.route("/api/fleet/current-position/<vehicle_id>")
+def api_current_position(vehicle_id):
+    """Read-After-Write demo — latest position from PRIMARY."""
+    try:
+        doc = operations.get_current_position(vehicle_id)
+        return jsonify({"ok": True, "source": "primary", "vehicle_id": vehicle_id,
+                        "data": operations._serialize_doc(doc)})
+    except PyMongoError as e:
+        return jsonify({"ok": False, "source": "primary", "error": str(e), "data": None}), 200
+
+
+@app.route("/api/fleet/active-shipments")
+def api_active_shipments():
+    """Active shipments from SECONDARY (eventual consistency)."""
+    try:
+        docs = operations.get_active_shipments(limit=20)
+        return jsonify({"ok": True, "source": "secondary", "data": _serialize_list(docs)})
+    except PyMongoError as e:
+        return jsonify({"ok": False, "source": "secondary", "error": str(e), "data": []}), 200
+
+
+@app.route("/api/fleet/open-incidents")
+def api_open_incidents():
+    """Open incidents from PRIMARY (read-after-write, safety-critical)."""
+    try:
+        docs = operations.get_open_incidents(limit=20)
+        return jsonify({"ok": True, "source": "primary", "data": _serialize_list(docs)})
+    except PyMongoError as e:
+        return jsonify({"ok": False, "source": "primary", "error": str(e), "data": []}), 200
+
+
+# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
+    db.ensure_indexes()
     operations.start_reconciler()
     app.run(host="0.0.0.0", port=5001, debug=False, threaded=True)

@@ -42,15 +42,15 @@ ceng465_project/
 
 | Role | Hostname | IP |
 |------|----------|----|
-| Primary / Leader | `mongo-primary.lan` | `192.168.88.146` |
-| Secondary / Follower | `mongo-secondary.lan` | `192.168.88.105` |
+| Primary / Leader | `mongo-primary.lan` | `192.168.88.30` |
+| Secondary / Follower | `mongo-secondary.lan` | `192.168.88.70` |
 | Replica set name | `rs0` | port `27017` |
 
 Both machines must have these entries in `/etc/hosts`:
 
 ```
-192.168.88.146  mongo-primary.lan
-192.168.88.105  mongo-secondary.lan
+192.168.88.30  mongo-primary.lan
+192.168.88.70  mongo-secondary.lan
 ```
 
 ---
@@ -64,7 +64,7 @@ brew tap mongodb/brew
 brew install mongodb-community
 ```
 
-### Configure Primary (`192.168.88.146`)
+### Configure Primary (`192.168.88.30`)
 
 ```bash
 nano /opt/homebrew/etc/mongod.conf
@@ -81,7 +81,7 @@ storage:
 
 net:
   port: 27017
-  bindIp: 127.0.0.1,192.168.88.146
+  bindIp: 127.0.0.1,192.168.88.30
 
 replication:
   replSetName: rs0
@@ -91,14 +91,14 @@ replication:
 > Copy-paste can introduce non-breaking spaces (`0xC2A0`) which cause `mongod` to fail with
 > `"Unrecognized option: systemLog"`.
 
-### Configure Secondary (`192.168.88.105`)
+### Configure Secondary (`192.168.88.70`)
 
 Same as above but with the secondary IP:
 
 ```yaml
 net:
   port: 27017
-  bindIp: 127.0.0.1,192.168.88.105
+  bindIp: 127.0.0.1,192.168.88.70
 ```
 
 ### Start MongoDB (both machines)
@@ -127,8 +127,8 @@ mongosh --host mongo-primary.lan --port 27017
 rs.initiate({
   _id: "rs0",
   members: [
-    { _id: 0, host: "mongo-primary.lan:27017", priority: 2 },
-    { _id: 1, host: "mongo-secondary.lan:27017", priority: 1 }
+    { _id: 0, host: "mongo-primary.lan:27017", priority: 2, votes: 1 },
+    { _id: 1, host: "mongo-secondary.lan:27017", priority: 1, votes: 1 }
   ]
 })
 ```
@@ -139,6 +139,27 @@ Verify:
 rs.status().members.forEach(m => print(m.name, m.stateStr))
 // mongo-primary.lan:27017   PRIMARY
 // mongo-secondary.lan:27017 SECONDARY
+```
+
+### Make Secondary Non-Voting (required for w=1 demo)
+
+With two voting members, stopping the secondary causes `ReplicaSetNoPrimary` — the primary
+steps down and even `w=1` writes fail. Make the secondary non-voting so the primary stays
+writable when the secondary is offline:
+
+```js
+cfg = rs.conf()
+cfg.members[1].priority = 0
+cfg.members[1].votes = 0
+rs.reconfig(cfg)
+```
+
+Verify:
+
+```js
+rs.conf().members.map(m => ({ host: m.host, priority: m.priority, votes: m.votes }))
+// [ { host: "mongo-primary.lan:27017",   priority: 2, votes: 1 },
+//   { host: "mongo-secondary.lan:27017", priority: 0, votes: 0 } ]
 ```
 
 ---
@@ -175,7 +196,7 @@ make status
 ```bash
 make dashboard
 # → http://localhost:5001
-# → http://192.168.88.146:5001  (accessible from secondary machine too)
+# → http://192.168.88.30:5001  (accessible from secondary machine too)
 ```
 
 ### Terminal demo (insert/update/delete + PNG chart)
@@ -237,18 +258,106 @@ make clean
 
 ## 4. Schema
 
-### `items` collection
+The system uses **6 fleet domain collections** (plus `operation_logs`). All 6 share the same replication metadata envelope; only the `value` field differs per collection.
+
+### Replication envelope (all 6 collections)
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `key` | string | human-readable item name |
-| `value` | object | application payload |
+| `key` | string | human-readable identifier (e.g. `VHC-TRK-001`) |
+| `value` | object | domain-specific payload (see below) |
 | `version` | int | increments on every write |
 | `leader_term` | int | Raft-inspired term number |
 | `last_log_index` | int | global operation ordering index |
 | `last_operation_id` | string | UUID unique per write |
 | `last_updated` | date | timestamp of last write on leader |
 | `deleted` | bool | soft-delete flag |
+
+### `vehicles` — vehicle registry
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `vehicle_id` | string | e.g. `TRK-001` |
+| `plate` | string | e.g. `34 ABC 001` |
+| `vehicle_type` | string | `truck` / `van` / `motorcycle` |
+| `max_payload_kg` | int | max cargo weight |
+| `manufacture_year` | int | year of manufacture |
+| `is_active` | bool | whether vehicle is in service |
+
+Indexes: `(vehicle_type, last_updated)`, `(is_active, last_updated)`
+
+### `drivers` — driver profiles
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `driver_id` | string | e.g. `DRV-001` |
+| `name` | string | full name |
+| `license_class` | string | `B` / `C` / `D` / `E` |
+| `phone` | string | contact phone |
+| `assigned_vehicle_id` | string | vehicle currently assigned to |
+
+Indexes: `(assigned_vehicle_id)`, `(license_class)`
+
+### `depots` — warehouse/hub locations
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `depot_id` | string | e.g. `DEP-IST` |
+| `name` | string | depot name |
+| `city` | string | city |
+| `lat` / `lng` | float | GPS coordinates |
+| `capacity_vehicles` | int | max vehicles at depot |
+
+Index: `(city)`
+
+### `shipments` — cargo shipments
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `shipment_id` | string | e.g. `SHP-2026-001` |
+| `origin_depot` | string | origin depot ID |
+| `destination_depot` | string | destination depot ID |
+| `customer` | string | customer name |
+| `weight_kg` | float | cargo weight |
+| `package_count` | int | number of packages |
+| `status` | string | `pending` / `in_transit` / `delivered` / `cancelled` |
+| `assigned_vehicle_id` | string | assigned vehicle |
+
+Indexes: `(status, last_updated)`, `(assigned_vehicle_id, last_updated)`
+
+### `positions` — live GPS stream (high-frequency writes)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `vehicle_id` | string | which vehicle |
+| `lat` / `lng` | float | GPS coordinates |
+| `city` | string | city name |
+| `district` | string | district name |
+| `speed_kmh` | float | current speed |
+
+Indexes: `(vehicle_id, last_updated)`, `(city, last_updated)`
+
+### `incidents` — safety events
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `vehicle_id` | string | vehicle involved |
+| `incident_type` | string | `breakdown` / `accident` / `delay` / `fuel_low` |
+| `severity` | string | `low` / `medium` / `high` / `critical` |
+| `description` | string | free-text description |
+| `lat` / `lng` | float | location (optional) |
+| `resolved` | bool | whether incident is resolved |
+
+Indexes: `(resolved, severity)`, `(vehicle_id, last_updated)`
+
+### Consistency experiment mapping
+
+| Collection | Read Path | Experiment |
+|---|---|---|
+| `positions` | SECONDARY | Eventual Consistency |
+| `shipments` | SECONDARY (version history) | Monotonic Reads |
+| `incidents` | PRIMARY | Read-After-Write |
+| `vehicles`, `drivers`, `depots` | SECONDARY | Eventual Consistency |
 
 ### `operation_logs` collection
 
@@ -333,3 +442,4 @@ Then recompile.
 | `mongod` not listening on LAN IP | Log/data directories missing | `mkdir -p /opt/homebrew/var/log/mongodb /opt/homebrew/var/mongodb` |
 | Flask port 5000 in use | macOS AirPlay Receiver holds port 5000 | Dashboard runs on port **5001** |
 | `pdflatex: command not found` after install | MacTeX `.pkg` not executed by Homebrew automatically | Run `sudo installer -pkg ...` manually, then add `/Library/TeX/texbin` to PATH |
+| `brew services` shows `error 62` | Data directory contains files from an older MongoDB version (e.g. 7.0 left from a previous install) | `brew services stop mongodb-community && rm -rf /opt/homebrew/var/mongodb/* && brew services start mongodb-community` — then re-initiate the replica set |

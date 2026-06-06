@@ -23,3 +23,6 @@ RECONCILE_DRAIN_BATCHES = 20
 
 # Secondary health monitoring cadence.
 HEALTHCHECK_INTERVAL_MS = 1000
+
+# Fleet domain — the 6 collections that replace the generic "items" collection.
+FLEET_COLLECTIONS = ["vehicles", "drivers", "depots", "shipments", "positions", "incidents"]
