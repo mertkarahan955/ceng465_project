@@ -1,0 +1,108 @@
+{
+  "saved_at": "2026-06-06T22:56:57.771639",
+  "experiment": "read_after_write",
+  "title": "Read-After-Write Consistency",
+  "description": "Yazıdan sonra SECONDARY'den okursak kendi yazımızı göremeyebiliriz. RAW çözümü: write yapan session için okumaları PRIMARY'ye yönlendir. (DDIA Figure 5-3)",
+  "actors": {
+    "client": {
+      "label": "Client / Dashboard",
+      "color": "#e6edf3",
+      "ip": "(control node)"
+    },
+    "primary": {
+      "label": "PRIMARY",
+      "color": "#3fb950",
+      "ip": "192.168.88.30"
+    },
+    "secondary": {
+      "label": "SECONDARY",
+      "color": "#58a6ff",
+      "ip": "192.168.88.70"
+    }
+  },
+  "actor_order": [
+    "client",
+    "primary",
+    "secondary"
+  ],
+  "events": [
+    {
+      "t_ms": 0,
+      "latency_ms": 11.100341796875,
+      "from": "client",
+      "to": "primary",
+      "label": "write incident (w=1)",
+      "type": "write"
+    },
+    {
+      "t_ms": 11.100341796875,
+      "latency_ms": 11.100341796875,
+      "from": "primary",
+      "to": "client",
+      "label": "ok (22.2ms) — immediately",
+      "type": "ok"
+    },
+    {
+      "t_ms": 11.100341796875,
+      "latency_ms": 21.38525390625,
+      "from": "primary",
+      "to": "secondary",
+      "label": "oplog (async, ~21.4ms)",
+      "type": "replicate"
+    },
+    {
+      "t_ms": 22.207763671875,
+      "latency_ms": 2.7000732421875,
+      "from": "client",
+      "to": "primary",
+      "label": "read (RAW path — PRIMARY)",
+      "type": "read"
+    },
+    {
+      "t_ms": 29.7835693359375,
+      "latency_ms": 2.7000732421875,
+      "from": "primary",
+      "to": "client",
+      "label": "✓ fresh (10.3ms) — always",
+      "type": "fresh_response"
+    },
+    {
+      "t_ms": 32.485595703125,
+      "latency_ms": 0.5,
+      "from": "client",
+      "to": "secondary",
+      "label": "read (wrong path)",
+      "type": "read"
+    },
+    {
+      "t_ms": 33.485595703125,
+      "latency_ms": 0.5,
+      "from": "secondary",
+      "to": "client",
+      "label": "✓ fresh (fast sync)",
+      "type": "fresh_response"
+    }
+  ],
+  "log": {
+    "log_index": 415,
+    "operation_id": "e95b4219",
+    "version_before": null,
+    "version_after": 1,
+    "write_concern": "1",
+    "status": "pending_follower",
+    "replication_delay_ms": null,
+    "leader_write_time": "2026-06-06T19:56:57.729000",
+    "follower_visible_time": null,
+    "target_collection": "incidents"
+  },
+  "summary": {
+    "write_concern": "1 (async)",
+    "write_returned_ms": 22.2,
+    "stale_read_observed": false,
+    "raw_read_ms": 10.28,
+    "raw_fresh": true,
+    "replication_delay_ms": 21.39,
+    "consistency_model": "Read-After-Write",
+    "consistency_achieved": true
+  }
+}

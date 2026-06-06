@@ -1,0 +1,223 @@
+{
+  "saved_at": "2026-06-06T23:01:57.573432",
+  "experiment": "eventual_consistency",
+  "title": "Eventual Consistency (w=1)",
+  "description": "Primary w=1 ile günceller — OK secondary beklenmeden döner. Secondary stale (eski) veriyi gösterir, sonra yakalar.",
+  "events": [
+    {
+      "t_ms": 0.003173828125,
+      "latency_ms": 0.5,
+      "from": "client",
+      "to": "secondary",
+      "label": "read (baseline)",
+      "type": "read"
+    },
+    {
+      "t_ms": 1.2490234375,
+      "latency_ms": 0.5,
+      "from": "secondary",
+      "to": "client",
+      "label": "v1 (synced)",
+      "type": "fresh_response"
+    },
+    {
+      "t_ms": 1.757080078125,
+      "latency_ms": 3.6314697265625,
+      "from": "client",
+      "to": "primary",
+      "label": "update (w=1, v1→v2)",
+      "type": "write"
+    },
+    {
+      "t_ms": 25.7386474609375,
+      "latency_ms": 3.6314697265625,
+      "from": "primary",
+      "to": "client",
+      "label": "ok (27.6ms) — no secondary wait",
+      "type": "ok"
+    },
+    {
+      "t_ms": 5.3885498046875,
+      "latency_ms": 0.5,
+      "from": "primary",
+      "to": "secondary",
+      "label": "oplog async",
+      "type": "replicate"
+    },
+    {
+      "t_ms": 2534.323974609375,
+      "latency_ms": 0.5,
+      "from": "secondary",
+      "to": "primary",
+      "label": "✓ write applied (v2) — 2533ms after write",
+      "type": "ack"
+    },
+    {
+      "t_ms": 230.6162109375,
+      "latency_ms": 0.5,
+      "from": "client",
+      "to": "secondary",
+      "label": "read",
+      "type": "read"
+    },
+    {
+      "t_ms": 231.6162109375,
+      "latency_ms": 0.5,
+      "from": "secondary",
+      "to": "client",
+      "label": "⚡ stale (v1 — old)",
+      "type": "stale_response"
+    },
+    {
+      "t_ms": 534.75634765625,
+      "latency_ms": 0.5,
+      "from": "client",
+      "to": "secondary",
+      "label": "read",
+      "type": "read"
+    },
+    {
+      "t_ms": 536.162109375,
+      "latency_ms": 0.5,
+      "from": "secondary",
+      "to": "client",
+      "label": "⚡ stale (v1 — old)",
+      "type": "stale_response"
+    },
+    {
+      "t_ms": 1032.406982421875,
+      "latency_ms": 0.5,
+      "from": "client",
+      "to": "secondary",
+      "label": "read",
+      "type": "read"
+    },
+    {
+      "t_ms": 1033.406982421875,
+      "latency_ms": 0.5,
+      "from": "secondary",
+      "to": "client",
+      "label": "⚡ stale (v1 — old)",
+      "type": "stale_response"
+    },
+    {
+      "t_ms": 1531.341064453125,
+      "latency_ms": 0.5,
+      "from": "client",
+      "to": "secondary",
+      "label": "read",
+      "type": "read"
+    },
+    {
+      "t_ms": 1532.341064453125,
+      "latency_ms": 0.5,
+      "from": "secondary",
+      "to": "client",
+      "label": "⚡ stale (v1 — old)",
+      "type": "stale_response"
+    },
+    {
+      "t_ms": 2030.53125,
+      "latency_ms": 0.5,
+      "from": "client",
+      "to": "secondary",
+      "label": "read",
+      "type": "read"
+    },
+    {
+      "t_ms": 2031.53125,
+      "latency_ms": 0.5,
+      "from": "secondary",
+      "to": "client",
+      "label": "⚡ stale (v1 — old)",
+      "type": "stale_response"
+    },
+    {
+      "t_ms": 2534.323974609375,
+      "latency_ms": 0.5,
+      "from": "client",
+      "to": "secondary",
+      "label": "read",
+      "type": "read"
+    },
+    {
+      "t_ms": 2535.323974609375,
+      "latency_ms": 0.5,
+      "from": "secondary",
+      "to": "client",
+      "label": "✓ fresh (v2)",
+      "type": "fresh_response"
+    }
+  ],
+  "log": {
+    "log_index": 424,
+    "operation_id": "550d8ce7",
+    "version_before": null,
+    "version_after": 1,
+    "write_concern": "1",
+    "status": "visible_on_follower",
+    "replication_delay_ms": 201.558,
+    "leader_write_time": "2026-06-06T20:01:53.928000",
+    "follower_visible_time": "2026-06-06T20:01:54.129000",
+    "target_collection": "positions"
+  },
+  "reads": [
+    {
+      "t_ms": 230.6162109375,
+      "t_end_ms": 231.945068359375,
+      "found": true,
+      "version": 1,
+      "stale_after_write": true,
+      "status": "v1"
+    },
+    {
+      "t_ms": 534.75634765625,
+      "t_end_ms": 536.662109375,
+      "found": true,
+      "version": 1,
+      "stale_after_write": true,
+      "status": "v1"
+    },
+    {
+      "t_ms": 1032.406982421875,
+      "t_end_ms": 1033.666259765625,
+      "found": true,
+      "version": 1,
+      "stale_after_write": true,
+      "status": "v1"
+    },
+    {
+      "t_ms": 1531.341064453125,
+      "t_end_ms": 1532.604248046875,
+      "found": true,
+      "version": 1,
+      "stale_after_write": true,
+      "status": "v1"
+    },
+    {
+      "t_ms": 2030.53125,
+      "t_end_ms": 2030.916259765625,
+      "found": true,
+      "version": 1,
+      "stale_after_write": true,
+      "status": "v1"
+    },
+    {
+      "t_ms": 2534.323974609375,
+      "t_end_ms": 2535.506103515625,
+      "found": true,
+      "version": 2,
+      "stale_after_write": false,
+      "status": "v2"
+    }
+  ],
+  "summary": {
+    "write_concern": "1 (async)",
+    "write_returned_ms": 27.61,
+    "replication_delay_ms": 201.56,
+    "consistency_model": "Eventual",
+    "stale_read_observed": true,
+    "consistency_window_ms": 2534.32,
+    "consistency_achieved": true
+  }
+}

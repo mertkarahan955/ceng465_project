@@ -352,7 +352,7 @@ def _run_eventual_consistency():
     # ── Phase 1b: Set 2-second secondary delay ─────────────────────
     # Bu, replication'ı kasıtlı olarak yavaşlatır ve stale read'leri
     # gözlemlenebilir kılar. Deney bitince sıfırlanır.
-    DELAY_SECS = 2
+    DELAY_SECS = 1
     prev_delay = _set_secondary_delay(DELAY_SECS)
 
     t0 = _ms()
@@ -381,7 +381,7 @@ def _run_eventual_consistency():
     TARGET = 2
     reads = []
     try:
-        for delay_ms in [200, 500, 1000, 1500, 2000, 2500, 3000]:
+        for delay_ms in [200, 500, 1000, 1500, 2000]:
             target_abs = t0 + write_returned_ms + delay_ms
             sleep_s = (target_abs - _ms()) / 1000
             if sleep_s > 0:
