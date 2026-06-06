@@ -526,7 +526,8 @@ async function runExperiment(name) {
 
     if (!json.ok) { showError(json.error || 'Unknown error'); return; }
 
-    const stale = json.result.summary?.stale_read_observed;
+    const stale = json.result.summary?.stale_read_observed ||
+                  (json.result.summary?.stale_reads_observed || 0) > 0;
     card.classList.add('done');
     if (stale) card.classList.add('stale'); else card.classList.remove('stale');
 
@@ -633,7 +634,8 @@ function renderResult(result, fromHistory) {
   const log     = result.log;
   const reads   = result.reads;
   const achieved= summary.consistency_achieved;
-  const stale   = summary.stale_read_observed;
+  const stale   = summary.stale_read_observed ||
+                  (summary.stale_reads_observed || 0) > 0;
 
   let verdictClass = achieved ? 'verdict-ok' : 'verdict-fail';
   let verdictText  = achieved ? '✓ CONSISTENCY SATISFIED' : '✗ CONSISTENCY VIOLATED';
@@ -689,7 +691,7 @@ function renderResult(result, fromHistory) {
     </details>` : '';
 
   const readsTitle = result.experiment === 'eventual_consistency'
-    ? '📡 Secondary Read Sequence (Eventual Convergence)'
+    ? '📡 Primary / Secondary Observation Sequence (Eventual Convergence)'
     : '🔢 Secondary Read Sequence (Monotonic Check)';
   const readsHtml = reads ? buildReadsTable(reads, readsTitle) : '';
 
@@ -774,6 +776,13 @@ function buildStatRows(s) {
     rows.push(stat('Secondary read', s.stale_read_observed ? 'STALE ⚡ (anomaly)' : 'FRESH ✓ (fast)',
                    s.stale_read_observed ? 'red' : 'green'));
 
+  if (s.stale_reads_observed != null)
+    rows.push(stat('Stale observations', String(s.stale_reads_observed),
+                   s.stale_reads_observed > 0 ? 'red' : 'green'));
+
+  if (s.secondary_delay_secs != null)
+    rows.push(stat('Delay factor', s.secondary_delay_secs + 's secondary delay', 'orange'));
+
   if (s.raw_fresh != null)
     rows.push(stat('PRIMARY read (RAW)', s.raw_fresh ? 'FRESH ✓ (always)' : 'STALE ⚡',
                    s.raw_fresh ? 'green' : 'red'));
@@ -793,11 +802,36 @@ function buildStatRows(s) {
 function buildReadsTable(reads, title) {
   title = title || '🔢 Secondary Read Sequence';
 
-  // Detect if this is an eventual-consistency table (has "found" field)
+  // Detect eventual-consistency observation rows.
+  const isECObservation = reads.length > 0 && 'node' in reads[0] && 'reference_version' in reads[0];
   const isEC = reads.length > 0 && 'found' in reads[0];
 
   const rows = reads.map((r, i) => {
-    if (isEC) {
+    if (isECObservation) {
+      const isSecondary = r.node === 'secondary';
+      const isStale = isSecondary && r.stale;
+      const isConsistent = r.nodes_consistent;
+      const resultColor = isStale ? 'var(--red)'
+                        : isConsistent ? 'var(--green)'
+                        : 'var(--orange)';
+      const resultLabel = isStale ? '⚡ inconsistent: follower lag'
+                        : isConsistent ? '✓ consistent'
+                        : 'leader ahead';
+      const rtt = ((r.t_end_ms || r.t_ms) - r.t_ms).toFixed(1);
+      const ref = r.reference_version != null ? 'v' + r.reference_version : '—';
+      const rowStyle = isStale ? 'background:rgba(248,81,73,.05)' : '';
+
+      return `<tr style="${rowStyle}">
+        <td style="color:var(--muted)">#${i+1}</td>
+        <td style="font-family:monospace">${r.t_ms.toFixed(1)} ms</td>
+        <td><span class="actor-pill actor-${r.node}">${r.node}</span></td>
+        <td style="font-family:monospace;color:${resultColor}">${r.version != null ? 'v' + r.version : '—'}</td>
+        <td style="font-family:monospace;color:var(--muted)">${ref}</td>
+        <td style="font-family:monospace;color:var(--muted)">${rtt} ms</td>
+        <td style="color:${resultColor};font-weight:700">${resultLabel}</td>
+        <td style="color:var(--muted)">${escHtml(r.status || '—')}</td>
+      </tr>`;
+    } else if (isEC) {
       const isStale  = r.stale_after_write;
       const isFresh  = r.version === 2;  // TARGET_VERSION
       const isPreUpd = !isStale && !isFresh;
@@ -836,13 +870,25 @@ function buildReadsTable(reads, title) {
     }
   }).join('');
 
-  const headers = isEC
+  const headers = isECObservation
+    ? '<th>#</th><th>Time</th><th>Node</th><th>Version</th><th>Compared to</th><th>Read RTT</th><th>Consistency</th><th>Observation</th>'
+    : isEC
     ? '<th>#</th><th>Time (ms)</th><th>Version seen</th><th>Read RTT</th><th>Result</th>'
     : '<th>#</th><th>Time</th><th>Version</th><th>Status</th>';
 
   // Summary row for EC
   let summaryHtml = '';
-  if (isEC) {
+  if (isECObservation) {
+    const staleCount = reads.filter(r => r.node === 'secondary' && r.stale).length;
+    const finalConsistent = reads.find(r => r.node === 'secondary' && r.nodes_consistent);
+    summaryHtml = `
+      <div style="padding:10px 14px;display:flex;gap:20px;align-items:center;
+                  border-top:1px solid var(--border);background:var(--bg3);font-size:11px;flex-wrap:wrap">
+        <span>Expected result: <strong style="color:var(--green)">secondary eventually matches primary</strong></span>
+        <span>Inconsistent follower reads: <strong style="color:var(--red)">${staleCount}</strong></span>
+        ${finalConsistent ? `<span>All nodes consistent at: <strong style="color:var(--blue);font-family:monospace">${finalConsistent.t_ms.toFixed(1)} ms</strong></span>` : ''}
+      </div>`;
+  } else if (isEC) {
     const staleCount = reads.filter(r => !r.found).length;
     const freshCount = reads.filter(r =>  r.found).length;
     const firstFresh = reads.find(r => r.found);

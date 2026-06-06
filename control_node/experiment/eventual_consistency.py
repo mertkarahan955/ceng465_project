@@ -104,64 +104,108 @@ def run_eventual_consistency():
     write_returned_ms = ms() - t0
     operations.set_write_concern("majority")
 
-    # ── Phase 4: Interleaved reads — secondary then primary at each interval ──
-    # Each iteration documents whether the nodes are consistent with each other.
-    # We guarantee at least MIN_STALE_ROUNDS stale observations before stopping,
-    # so the timeline always shows: sec(stale) → pri(fresh) → sec(stale) → pri(fresh)
-    # → sec(consistent) with a clear inconsistency window.
-    TARGET           = 2
-    MIN_STALE_ROUNDS = 2          # must see this many stale secondary reads first
-    reads            = []
-    stale_rounds     = 0
+    # ── Phase 4: Observation sequence ─────────────────────────────────────────
+    # The intended observation is about PRIMARY vs SECONDARY state, not just a
+    # single secondary stale read:
+    #   secondary -> primary  (inconsistent)
+    #   secondary -> primary  (still inconsistent)
+    #   secondary             (finally consistent)
+    TARGET = 2
+    reads = []
+    latest_primary_version = TARGET
+    last_secondary_version = None
+
+    def sleep_until_after_write(delay_ms: int) -> None:
+        target_abs = t0 + write_returned_ms + delay_ms
+        sleep_s = (target_abs - ms()) / 1000
+        if sleep_s > 0:
+            time.sleep(sleep_s)
+
+    def observe_secondary(label: str) -> dict:
+        nonlocal last_secondary_version
+        t_read = ms() - t0
+        doc = db.get_secondary()["positions"].find_one({"_id": item_id})
+        t_end = ms() - t0
+        version = doc.get("version") if doc else None
+        stale = version != latest_primary_version
+        last_secondary_version = version
+        obs = {
+            "node":             "secondary",
+            "label":            label,
+            "t_ms":             t_read,
+            "t_end_ms":         t_end,
+            "version":          version,
+            "reference_version": latest_primary_version,
+            "stale":            stale,
+            "nodes_consistent": not stale,
+            "status":           "follower lagging behind leader" if stale else "all nodes consistent",
+        }
+        reads.append(obs)
+        return obs
+
+    def observe_primary(label: str) -> dict:
+        nonlocal latest_primary_version
+        t_read = ms() - t0
+        doc = db.get_primary()["positions"].find_one({"_id": item_id})
+        t_end = ms() - t0
+        version = doc.get("version") if doc else None
+        latest_primary_version = version
+        inconsistent_with_secondary = last_secondary_version != version
+        obs = {
+            "node":             "primary",
+            "label":            label,
+            "t_ms":             t_read,
+            "t_end_ms":         t_end,
+            "version":          version,
+            "reference_version": last_secondary_version,
+            "stale":            False,
+            "nodes_consistent": not inconsistent_with_secondary,
+            "status": (
+                f"leader has v{version}; follower still v{last_secondary_version}"
+                if inconsistent_with_secondary else
+                "leader and follower match"
+            ),
+        }
+        reads.append(obs)
+        return obs
+
     try:
-        for delay_ms in [200, 400, 700, 1000, 1300, 1600, 2000]:
-            target_abs = t0 + write_returned_ms + delay_ms
-            sleep_s    = (target_abs - ms()) / 1000
-            if sleep_s > 0:
-                time.sleep(sleep_s)
+        sleep_until_after_write(200)
+        observe_secondary("read secondary #1")
+        observe_primary("read primary #1 (leader reference)")
 
-            # Read from SECONDARY first (may be stale)
-            t_sec1    = ms() - t0
-            sec_doc   = db.get_secondary()["positions"].find_one({"_id": item_id})
-            t_sec2    = ms() - t0
-            sec_ver   = sec_doc.get("version") if sec_doc else None
-            sec_stale = sec_ver != TARGET
+        sleep_until_after_write(550)
+        observe_secondary("read secondary #2")
+        observe_primary("read primary #2 (leader reference)")
 
-            # Read from PRIMARY immediately after (always fresh — reference point)
-            t_pri1  = ms() - t0
-            pri_doc = db.get_primary()["positions"].find_one({"_id": item_id})
-            t_pri2  = ms() - t0
-            pri_ver = pri_doc.get("version") if pri_doc else None
-
-            if sec_stale:
-                stale_rounds += 1
-
-            reads.append({
-                "t_ms":             t_sec1,
-                "t_end_ms":         t_sec2,
-                "t_pri_ms":         t_pri1,
-                "t_pri_end_ms":     t_pri2,
-                "sec_version":      sec_ver,
-                "pri_version":      pri_ver,
-                "stale":            sec_stale,
-                "nodes_consistent": not sec_stale,
-                "status":           f"sec=v{sec_ver} pri=v{pri_ver}",
-            })
-
-            # Only stop when secondary is consistent AND we have seen enough stale rounds
-            if not sec_stale and stale_rounds >= MIN_STALE_ROUNDS:
+        # Final observation: wait until the follower is expected to have applied
+        # the delayed oplog, then record the first secondary read that sees v2.
+        sleep_until_after_write((_SECONDARY_DELAY_SECS * 1000) + 150)
+        deadline = time.time() + 3.0
+        final_obs = None
+        while time.time() < deadline:
+            final_obs = observe_secondary("read secondary #3 (eventual convergence)")
+            if final_obs["nodes_consistent"]:
                 break
+            # Internal polling noise is not useful for the teaching timeline.
+            reads.pop()
+            time.sleep(0.1)
+        if final_obs and final_obs not in reads:
+            reads.append(final_obs)
     finally:
         _set_secondary_delay(prev_delay)
 
     # ── Derive consistency metrics ─────────────────────────────────────────────
-    first_consistent  = next((r for r in reads if r["nodes_consistent"]), None)
-    synced_ms         = first_consistent["t_ms"] if first_consistent else None
-    stale_count       = sum(1 for r in reads if r["stale"])
+    first_consistent = next(
+        (r for r in reads if r["node"] == "secondary" and r["nodes_consistent"]),
+        None,
+    )
+    synced_ms = first_consistent["t_ms"] if first_consistent else None
+    stale_count = sum(1 for r in reads if r["node"] == "secondary" and r["stale"])
     consistency_window = round(synced_ms - write_start_ms, 1) if synced_ms else None
 
     log     = get_log(item_id)
-    repl_ms = log.get("replication_delay_ms") if log else None
+    repl_ms = (log.get("replication_delay_ms") if log else None) or consistency_window
 
     update_duration      = write_returned_ms - write_start_ms
     primary_commit_ms    = write_start_ms + net_p
@@ -194,28 +238,33 @@ def run_eventual_consistency():
          "type": "ack"},
     ]
 
-    # 4. Interleaved reads: secondary (stale/fresh) then primary (always fresh)
+    # 4. Observation reads in the exact sequence shown to the user.
     for r in reads:
-        # Secondary read
-        sec_label = (
-            f"⚡ stale — sec=v{r['sec_version']} pri=v{r['pri_version']} (inconsistent)"
-            if r["stale"] else
-            f"✓ fresh — sec=v{r['sec_version']} = pri=v{r['pri_version']} (consistent!)"
+        if r["node"] == "secondary":
+            resp_label = (
+                f"⚡ secondary v{r['version']} vs primary v{r['reference_version']} (inconsistent)"
+                if r["stale"] else
+                f"✓ secondary v{r['version']} = primary v{r['reference_version']} (finally consistent)"
+            )
+            events.extend(req_resp_events(
+                r["t_ms"], r["t_end_ms"], net_s,
+                "client", "secondary",
+                r["label"], "read",
+                resp_label,
+                "stale_response" if r["stale"] else "fresh_response",
+            ))
+            continue
+
+        resp_label = (
+            f"✓ primary v{r['version']} — leader ahead of secondary v{r['reference_version']}"
+            if not r["nodes_consistent"] else
+            f"✓ primary v{r['version']} — leader/follower match"
         )
         events.extend(req_resp_events(
-            r["t_ms"], r["t_end_ms"], net_s,
-            "client", "secondary",
-            "read secondary", "read",
-            sec_label,
-            "stale_response" if r["stale"] else "fresh_response",
-        ))
-
-        # Primary read (reference — always v2)
-        events.extend(req_resp_events(
-            r["t_pri_ms"], r["t_pri_end_ms"], net_p,
+            r["t_ms"], r["t_end_ms"], net_p,
             "client", "primary",
-            "read primary (reference)", "read",
-            f"✓ v{r['pri_version']} (always fresh)", "fresh_response",
+            r["label"], "read",
+            resp_label, "fresh_response",
         ))
 
     return {
@@ -237,6 +286,7 @@ def run_eventual_consistency():
             "write_returned_ms":        round(update_duration, 2),
             # Consistency observation
             "consistency_model":        "Eventual",
+            "stale_read_observed":      stale_count > 0,
             "stale_reads_observed":     stale_count,
             "consistency_achieved":     synced_ms is not None,
             "consistency_window_ms":    consistency_window,
@@ -247,10 +297,11 @@ def run_eventual_consistency():
             # Node states at each read
             "read_observations": [
                 {
-                    "at_ms":         round(r["t_ms"], 1),
-                    "secondary":     f"v{r['sec_version']}",
-                    "primary":       f"v{r['pri_version']}",
-                    "consistent":    r["nodes_consistent"],
+                    "at_ms":      round(r["t_ms"], 1),
+                    "node":       r["node"],
+                    "version":    f"v{r['version']}",
+                    "reference":  f"v{r['reference_version']}" if r["reference_version"] is not None else None,
+                    "consistent": r["nodes_consistent"],
                 }
                 for r in reads
             ],
