@@ -1,0 +1,115 @@
+{
+  "saved_at": "2026-06-06T21:47:47.593032",
+  "experiment": "read_after_write",
+  "title": "Read-After-Write Consistency (2-User Demo)",
+  "description": "RAW bir session garantisidir — User A yazdığını PRIMARY'den anında okur. User B aynı anda SECONDARY'den okur ve stale görebilir. Bu bir ihlal değil: RAW sadece yazana söz verir.",
+  "actors": {
+    "user_a": {
+      "label": "User A (writer)",
+      "color": "#e3b341",
+      "ip": "dispatcher client"
+    },
+    "user_b": {
+      "label": "User B (observer)",
+      "color": "#79c0ff",
+      "ip": "viewer client"
+    },
+    "primary": {
+      "label": "PRIMARY",
+      "color": "#3fb950",
+      "ip": "192.168.88.30"
+    },
+    "secondary": {
+      "label": "SECONDARY",
+      "color": "#58a6ff",
+      "ip": "192.168.88.70"
+    }
+  },
+  "actor_order": [
+    "user_a",
+    "user_b",
+    "primary",
+    "secondary"
+  ],
+  "events": [
+    {
+      "t_ms": 0,
+      "latency_ms": 4.0865478515625,
+      "from": "user_a",
+      "to": "primary",
+      "label": "write incident (w=1)",
+      "type": "write"
+    },
+    {
+      "t_ms": 4.0865478515625,
+      "latency_ms": 4.0865478515625,
+      "from": "primary",
+      "to": "user_a",
+      "label": "ok (8.2ms) — immediately",
+      "type": "ok"
+    },
+    {
+      "t_ms": 4.0865478515625,
+      "latency_ms": 35.0,
+      "from": "primary",
+      "to": "secondary",
+      "label": "oplog (async)",
+      "type": "replicate"
+    },
+    {
+      "t_ms": 8.175048828125,
+      "latency_ms": 0.5,
+      "from": "user_a",
+      "to": "primary",
+      "label": "read — PRIMARY (RAW path)",
+      "type": "read"
+    },
+    {
+      "t_ms": 8.675048828125,
+      "latency_ms": 0.5,
+      "from": "primary",
+      "to": "user_a",
+      "label": "✓ fresh (0.4ms) — always",
+      "type": "fresh_response"
+    },
+    {
+      "t_ms": 18.5439453125,
+      "latency_ms": 14.7930908203125,
+      "from": "user_b",
+      "to": "secondary",
+      "label": "read — SECONDARY (observer)",
+      "type": "read"
+    },
+    {
+      "t_ms": 33.3370361328125,
+      "latency_ms": 14.7930908203125,
+      "from": "secondary",
+      "to": "user_b",
+      "label": "✓ fresh",
+      "type": "fresh_response"
+    }
+  ],
+  "log": {
+    "log_index": 176,
+    "operation_id": "995a3ab1",
+    "version_before": null,
+    "version_after": 1,
+    "write_concern": "1",
+    "status": "visible_on_follower",
+    "replication_delay_ms": 181.851,
+    "leader_write_time": "2026-06-06T18:47:47.534000",
+    "follower_visible_time": "2026-06-06T18:47:47.715000",
+    "target_collection": "incidents"
+  },
+  "summary": {
+    "write_concern": "1 (async)",
+    "write_returned_ms": 8.17,
+    "primary_read_ms": 0.36,
+    "user_a_fresh": true,
+    "user_b_stale": false,
+    "user_b_eventually_fresh": true,
+    "replication_delay_ms": 181.85,
+    "consistency_model": "Read-After-Write (per-session)",
+    "consistency_achieved": true
+  }
+}

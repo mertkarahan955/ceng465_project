@@ -1,0 +1,95 @@
+{
+  "saved_at": "2026-06-06T22:06:23.761045",
+  "experiment": "eventual_consistency",
+  "title": "Eventual Consistency (w=1)",
+  "description": "Primary w=1 ile günceller — OK secondary beklenmeden döner. Secondary stale (eski) veriyi gösterir, sonra yakalar.",
+  "events": [
+    {
+      "t_ms": 0.0,
+      "latency_ms": 4.695068359375,
+      "from": "client",
+      "to": "secondary",
+      "label": "read (baseline)",
+      "type": "read"
+    },
+    {
+      "t_ms": 4.695068359375,
+      "latency_ms": 4.695068359375,
+      "from": "secondary",
+      "to": "client",
+      "label": "v1 (synced)",
+      "type": "fresh_response"
+    },
+    {
+      "t_ms": 9.39208984375,
+      "latency_ms": 3.135009765625,
+      "from": "client",
+      "to": "primary",
+      "label": "update (w=1, v1→v2)",
+      "type": "write"
+    },
+    {
+      "t_ms": 12.527099609375,
+      "latency_ms": 3.135009765625,
+      "from": "primary",
+      "to": "client",
+      "label": "ok (6.3ms) — no secondary wait",
+      "type": "ok"
+    },
+    {
+      "t_ms": 12.527099609375,
+      "latency_ms": 19.462,
+      "from": "primary",
+      "to": "secondary",
+      "label": "oplog async — 19.5ms",
+      "type": "replicate"
+    },
+    {
+      "t_ms": 15.6650390625,
+      "latency_ms": 4.8389892578125,
+      "from": "client",
+      "to": "secondary",
+      "label": "read",
+      "type": "read"
+    },
+    {
+      "t_ms": 20.5040283203125,
+      "latency_ms": 4.8389892578125,
+      "from": "secondary",
+      "to": "client",
+      "label": "✓ fresh (v2)",
+      "type": "fresh_response"
+    }
+  ],
+  "log": {
+    "log_index": 251,
+    "operation_id": "dbd500e2",
+    "version_before": null,
+    "version_after": 1,
+    "write_concern": "majority",
+    "status": "visible_on_follower",
+    "replication_delay_ms": 19.462,
+    "leader_write_time": "2026-06-06T19:06:23.702000",
+    "follower_visible_time": "2026-06-06T19:06:23.721000",
+    "target_collection": "positions"
+  },
+  "reads": [
+    {
+      "t_ms": 15.6650390625,
+      "t_end_ms": 25.343017578125,
+      "found": true,
+      "version": 2,
+      "stale_after_write": false,
+      "status": "v2"
+    }
+  ],
+  "summary": {
+    "write_concern": "1 (async)",
+    "write_returned_ms": 6.27,
+    "replication_delay_ms": 19.46,
+    "consistency_model": "Eventual",
+    "stale_read_observed": false,
+    "consistency_window_ms": 15.67,
+    "consistency_achieved": true
+  }
+}

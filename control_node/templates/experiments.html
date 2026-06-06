@@ -309,9 +309,11 @@ body {
   font-size: 10px;
   font-weight: 600;
 }
-.actor-client    { background: rgba(230,237,243,.1); color: var(--white); }
-.actor-primary   { background: rgba(63,185,80,.15);  color: var(--green); }
-.actor-secondary { background: rgba(88,166,255,.15); color: var(--blue);  }
+.actor-client    { background: rgba(230,237,243,.1);  color: var(--white);  }
+.actor-primary   { background: rgba(63,185,80,.15);   color: var(--green);  }
+.actor-secondary { background: rgba(88,166,255,.15);  color: var(--blue);   }
+.actor-user_a    { background: rgba(227,179,65,.18);  color: #e3b341;       }
+.actor-user_b    { background: rgba(121,192,255,.18); color: #79c0ff;       }
 
 /* type pills */
 .type-write         { color: var(--blue); }
@@ -412,7 +414,7 @@ details summary:hover { color: var(--text); }
     <!-- 3. Read-After-Write -->
     <div class="exp-card" id="card-read_after_write" onclick="selectExperiment('read_after_write')">
       <div class="exp-card-title">③ Read-After-Write</div>
-      <div class="exp-card-desc">w=1 async yazar — primary'den her zaman taze, secondary stale olabilir</div>
+      <div class="exp-card-desc">w=1 yazar — secondary stale hit → "no results", primary'den oku → taze (DDIA Fig. 5-3)</div>
       <span class="exp-badge badge-primary">w=1 · PRIMARY read</span>
       <button class="run-btn" id="btn-read_after_write"
               onclick="event.stopPropagation(); runExperiment('read_after_write')">
@@ -462,12 +464,12 @@ details summary:hover { color: var(--text); }
 <!-- ── Scripts ────────────────────────────────────────────────── -->
 <script>
 /* ── Constants ────────────────────────────────────────────────── */
-const ACTOR_CFG = {
+// Default actor config (3-actor experiments). Per-result actors override this.
+const DEFAULT_ACTOR_CFG = {
   client:    { label: 'Client / Dashboard', color: '#e6edf3', ip: '(control node)' },
   primary:   { label: 'PRIMARY',            color: '#3fb950', ip: '192.168.88.30'  },
   secondary: { label: 'SECONDARY',          color: '#58a6ff', ip: '192.168.88.70'  },
 };
-const ACTORS = ['client', 'primary', 'secondary'];
 
 const EVENT_COLORS = {
   write:          '#58a6ff',
@@ -635,7 +637,19 @@ function renderResult(result, fromHistory) {
 
   let verdictClass = achieved ? 'verdict-ok' : 'verdict-fail';
   let verdictText  = achieved ? '✓ CONSISTENCY SATISFIED' : '✗ CONSISTENCY VIOLATED';
-  if (stale && achieved) {
+
+  // Single-user RAW: stale from secondary IS the anomaly, fresh from primary IS the fix
+  if (summary.raw_fresh !== undefined) {
+    if (summary.raw_fresh) {
+      verdictClass = 'verdict-ok';
+      verdictText  = summary.stale_read_observed
+        ? '✓ RAW SATISFIED — PRIMARY always fresh. SECONDARY stale → this is WHY we route to PRIMARY.'
+        : '✓ RAW SATISFIED — PRIMARY read fresh. (Secondary was fast this run.)';
+    } else {
+      verdictClass = 'verdict-fail';
+      verdictText  = '✗ RAW VIOLATED — Could not read own write from PRIMARY.';
+    }
+  } else if (stale && achieved) {
     verdictClass = 'verdict-partial';
     verdictText  = '⚡ EVENTUAL — stale read observed, eventually consistent';
   }
@@ -728,7 +742,7 @@ function renderResult(result, fromHistory) {
       ${logHtml}
     </div>`;
 
-  requestAnimationFrame(() => drawTimeline('timeline-wrap', events));
+  requestAnimationFrame(() => drawTimeline('timeline-wrap', events, result.actors, result.actor_order));
 }
 
 /* ── Stats helper ─────────────────────────────────────────────── */
@@ -742,20 +756,18 @@ function buildStatRows(s) {
 
   if (s.write_returned_ms    != null) rows.push(stat('Write returned',      s.write_returned_ms.toFixed(1)    + ' ms', 'blue'));
   if (s.replication_delay_ms != null) rows.push(stat('Repl. delay',         s.replication_delay_ms.toFixed(1) + ' ms', 'orange'));
-  if (s.primary_read_ms      != null) rows.push(stat('Primary read',        s.primary_read_ms.toFixed(1)      + ' ms', 'green'));
+  if (s.raw_read_ms          != null) rows.push(stat('PRIMARY read (RAW)',  s.raw_read_ms.toFixed(1)          + ' ms', 'green'));
   if (s.consistency_window_ms!= null) rows.push(stat('Consistency window',  s.consistency_window_ms.toFixed(1)+ ' ms', 'orange'));
   if (s.version_after        != null) rows.push(stat('Version after',       'v' + s.version_after,                     'white'));
   if (s.final_version        != null) rows.push(stat('Final version',       'v' + s.final_version,                     'white'));
 
   if (s.stale_read_observed != null)
-    rows.push(stat('Stale read', s.stale_read_observed ? 'YES ⚡' : 'NO ✓',
+    rows.push(stat('Secondary read', s.stale_read_observed ? 'STALE ⚡ (anomaly)' : 'FRESH ✓ (fast)',
                    s.stale_read_observed ? 'red' : 'green'));
 
-  if (s.primary_fresh != null)
-    rows.push(stat('Primary read',   s.primary_fresh   ? 'FRESH ✓' : 'STALE ⚡', s.primary_fresh   ? 'green' : 'red'));
-
-  if (s.secondary_fresh != null)
-    rows.push(stat('Secondary read', s.secondary_fresh ? 'FRESH ✓' : 'STALE ⚡', s.secondary_fresh ? 'green' : 'red'));
+  if (s.raw_fresh != null)
+    rows.push(stat('PRIMARY read (RAW)', s.raw_fresh ? 'FRESH ✓ (always)' : 'STALE ⚡',
+                   s.raw_fresh ? 'green' : 'red'));
 
   if (s.versions_seen && s.versions_seen.length)
     rows.push(stat('Versions seen', s.versions_seen.map(v => 'v' + v).join(' → '), 'purple'));
@@ -849,15 +861,20 @@ function buildReadsTable(reads, title) {
    SVG Timeline Drawing Engine
    ══════════════════════════════════════════════════════════════ */
 
-function drawTimeline(containerId, events) {
+function drawTimeline(containerId, events, actorsCfg, actorOrder) {
   const wrap = document.getElementById(containerId);
   if (!wrap) return;
 
+  // Use per-result actor config (supports 3-actor and 4-actor layouts).
+  // actor_order guarantees the top→bottom lane order regardless of JSON key order.
+  const ACTOR_CFG   = actorsCfg || DEFAULT_ACTOR_CFG;
+  const ACTORS      = actorOrder || Object.keys(ACTOR_CFG);
+
   const W        = Math.max(wrap.clientWidth || 800, 760);
-  const TRACK_H  = 130;   // vertical gap between actor lanes
+  const TRACK_H  = ACTORS.length > 3 ? 110 : 130; // tighter for 4-actor layouts
   const PAD_TOP  = 36;
   const PAD_BOT  = 52;
-  const LAB_W    = 152;
+  const LAB_W    = 160;
   const PAD_R    = 28;
   const CHART_W  = W - LAB_W - PAD_R;
   const H        = PAD_TOP + TRACK_H * (ACTORS.length - 1) + PAD_TOP + PAD_BOT;

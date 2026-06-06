@@ -5,17 +5,16 @@ Her deneyi çalıştırır ve DDIA-style timeline için gerekli event'leri üret
 Her event:
   t_ms       — gönderim anı (deney başından ms cinsinden)
   latency_ms — iletim gecikmesi (ok eğimini belirler)
-  from / to  — aktör isimleri: "client" | "primary" | "secondary"
+  from / to  — aktör isimleri: "client" | "user_a" | "user_b" | "primary" | "secondary"
   label      — ok üzerindeki metin
   type       — renk kodlaması için
 """
 
+import contextlib
 import json
 import os
 import time
-from datetime import datetime, timezone
-
-from bson import ObjectId
+from datetime import datetime
 
 import db
 import operations
@@ -25,11 +24,47 @@ import operations
 
 RESULTS_DIR = os.path.join(os.path.dirname(__file__), "experiment_results")
 
+# Default 3-actor config (used by experiments 1, 2, 4)
+DEFAULT_ACTORS = {
+    "client":    {"label": "Client / Dashboard", "color": "#e6edf3", "ip": "(control node)"},
+    "primary":   {"label": "PRIMARY",            "color": "#3fb950", "ip": "192.168.88.30"},
+    "secondary": {"label": "SECONDARY",          "color": "#58a6ff", "ip": "192.168.88.70"},
+}
+DEFAULT_ACTOR_ORDER = ["client", "primary", "secondary"]
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+
+
+# ── Low-level helpers ──────────────────────────────────────────────────────────
 
 def _ms():
+    """Current time in ms (float)."""
     return time.time() * 1000
+
+
+def _safe_lat(v, minimum=0.5):
+    """Clamp latency_ms to a positive value — prevents backward SVG arrows.
+
+    FIX (code-review Bug 1 + Bug 3): proportional sub-timing arithmetic can
+    produce zero or negative values on fast LANs.  Every latency_ms in an
+    event dict must pass through this helper.
+    """
+    return max(float(v), minimum)
+
+
+@contextlib.contextmanager
+def _write_concern(w):
+    """Temporarily set write concern, ALWAYS restore majority on exit.
+
+    FIX (code-review Bug 2): the original pattern set w=1 at the top of each
+    experiment and restored majority at the bottom with no try/finally.  Any
+    exception mid-experiment left the process-global _write_concern at 1,
+    silently downgrading all subsequent dashboard writes.
+    """
+    operations.set_write_concern(w)
+    try:
+        yield
+    finally:
+        operations.set_write_concern("majority")
 
 
 def _get_log(item_id):
@@ -40,28 +75,35 @@ def _serialize_log(log):
     if not log:
         return None
     return {
-        "log_index":           log.get("log_index"),
-        "operation_id":        str(log.get("operation_id", ""))[:8],
-        "version_before":      log.get("version_before"),
-        "version_after":       log.get("version_after"),
-        "write_concern":       str(log.get("write_concern", "")),
-        "status":              log.get("status"),
+        "log_index":            log.get("log_index"),
+        "operation_id":         str(log.get("operation_id", ""))[:8],
+        "version_before":       log.get("version_before"),
+        "version_after":        log.get("version_after"),
+        "write_concern":        str(log.get("write_concern", "")),
+        "status":               log.get("status"),
         "replication_delay_ms": log.get("replication_delay_ms"),
-        "leader_write_time":   log.get("leader_write_time").isoformat() if log.get("leader_write_time") else None,
+        "leader_write_time":    log.get("leader_write_time").isoformat() if log.get("leader_write_time") else None,
         "follower_visible_time": log.get("follower_visible_time").isoformat() if log.get("follower_visible_time") else None,
-        "target_collection":   log.get("target_collection"),
+        "target_collection":    log.get("target_collection"),
     }
 
 
+# ── Result persistence ─────────────────────────────────────────────────────────
+
 def _save_result(name: str, result: dict) -> str:
-    """Save experiment result as JSON. Returns the filename."""
+    """Persist experiment result to disk. Returns the filename.
+
+    FIX (code-review Bug 4): caller (run_experiment) wraps this in try/except
+    so a save failure never suppresses a successful experiment result.
+    """
     folder = os.path.join(RESULTS_DIR, name)
     os.makedirs(folder, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:20]
     filename = f"{ts}.json"
     path = os.path.join(folder, filename)
     with open(path, "w", encoding="utf-8") as f:
-        json.dump({"saved_at": datetime.now().isoformat(), **result}, f, ensure_ascii=False, indent=2)
+        json.dump({"saved_at": datetime.now().isoformat(), **result}, f,
+                  ensure_ascii=False, indent=2, default=str)
     return filename
 
 
@@ -101,23 +143,39 @@ def load_result(name: str, filename: str) -> dict:
 
 def run_experiment(name):
     registry = {
-        "sync_replication":    _run_sync_replication,
+        "sync_replication":     _run_sync_replication,
         "eventual_consistency": _run_eventual_consistency,
-        "read_after_write":    _run_read_after_write,
-        "monotonic_reads":     _run_monotonic_reads,
+        "read_after_write":     _run_read_after_write,
+        "monotonic_reads":      _run_monotonic_reads,
     }
     fn = registry.get(name)
     if not fn:
         raise ValueError(f"Unknown experiment: {name!r}")
+
     result = fn()
-    _save_result(name, result)
+
+    # FIX Bug 4: save failure must not suppress a successful experiment result.
+    try:
+        _save_result(name, result)
+    except OSError:
+        pass
+
     return result
 
 
-# ── Experiment 1: Synchronous Replication (w=majority) ────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+# Experiment 1 — Synchronous Replication (w=majority)
+# ═══════════════════════════════════════════════════════════════════════════════
 
 def _run_sync_replication():
-    """w=majority: Primary follower'ın ACK'ini bekledikten sonra istemciye döner."""
+    """w=majority: Primary follower ACK'ini bekler, sonra istemciye döner.
+
+    Timeline:
+      Client → Primary: write (w=majority)
+      Primary → Secondary: oplog → apply
+      Secondary → Primary: ACK
+      Primary → Client: ok  (only after ACK — this is the key delay)
+    """
     operations.set_write_concern("majority")
 
     t0 = _ms()
@@ -126,33 +184,33 @@ def _run_sync_replication():
     )
     t1 = _ms()
 
-    d = delay_ms if delay_ms is not None else (t1 - t0)
+    # FIX Bug 3: use `or` instead of `is not None` so that delay_ms=0.0
+    # (instantaneous replication) also falls back to wall-clock measurement.
+    d = delay_ms or (t1 - t0)
     log = _get_log(item_id)
 
-    # Sub-timings proportional to measured round-trip d.
-    # Use symmetric half-RTT for each request-response pair so arrows form clean V-shapes.
-    half_cli = max(d * 0.06, 1.5)   # client ↔ primary one-way estimate
-    oplog_start = max(half_cli * 2, d * 0.10)
-    sec_apply   = d * 0.70
-    sec_ack     = d * 0.78
-    # ok departs from primary at d - half_cli, arrives at client at d
-    ok_depart   = d - half_cli
+    # Proportional sub-timings.  All pass through _safe_lat to guarantee > 0.
+    half_cli    = max(d * 0.07, 1.5)   # client ↔ primary one-way estimate
+    oplog_start = max(half_cli * 2, d * 0.12)
+    sec_apply   = d * 0.68
+    sec_ack     = d * 0.76
+    ok_depart   = d - half_cli         # primary sends ok when ACK arrives
 
+    # FIX Bug 1: ACK latency = ok_depart - sec_ack can go negative when d < 7ms.
+    # _safe_lat clamps it to 0.5ms minimum so the arrow still points forward.
     events = [
-        # Client sends write; arrives at primary at half_cli*2 (round-trip split)
-        {"t_ms": 0,           "latency_ms": half_cli * 2,            "from": "client",    "to": "primary",   "label": "write (w=majority)", "type": "write"},
-        # Primary replicates to secondary
-        {"t_ms": oplog_start, "latency_ms": sec_apply - oplog_start, "from": "primary",   "to": "secondary", "label": "oplog → apply",      "type": "replicate"},
-        # Secondary ACKs; arrives at primary at ok_depart
-        {"t_ms": sec_ack,     "latency_ms": ok_depart - sec_ack,     "from": "secondary", "to": "primary",   "label": "ACK ✓",             "type": "ack"},
-        # ok departs exactly when ACK arrives → V-shape with ACK
-        {"t_ms": ok_depart,   "latency_ms": half_cli,                "from": "primary",   "to": "client",    "label": f"ok ({d:.1f} ms)",  "type": "ok"},
+        {"t_ms": 0,           "latency_ms": _safe_lat(half_cli * 2),          "from": "client",    "to": "primary",   "label": "write (w=majority)", "type": "write"},
+        {"t_ms": oplog_start, "latency_ms": _safe_lat(sec_apply - oplog_start),"from": "primary",   "to": "secondary", "label": "oplog → apply",      "type": "replicate"},
+        {"t_ms": sec_ack,     "latency_ms": _safe_lat(ok_depart - sec_ack),   "from": "secondary", "to": "primary",   "label": "ACK ✓",              "type": "ack"},
+        {"t_ms": ok_depart,   "latency_ms": _safe_lat(half_cli),              "from": "primary",   "to": "client",    "label": f"ok ({d:.1f} ms)",   "type": "ok"},
     ]
 
     return {
         "experiment":  "sync_replication",
         "title":       "Synchronous Replication (w=majority)",
         "description": "Primary, follower ACK'ini bekler. İstemci ancak secondary onayladıktan sonra 'ok' alır. Daha güvenli ama daha yavaş.",
+        "actors":      DEFAULT_ACTORS,
+        "actor_order": DEFAULT_ACTOR_ORDER,
         "events":      events,
         "log":         _serialize_log(log),
         "summary": {
@@ -167,7 +225,9 @@ def _run_sync_replication():
     }
 
 
-# ── Experiment 2: Eventual Consistency (w=1) ──────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+# Experiment 2 — Eventual Consistency (w=1)
+# ═══════════════════════════════════════════════════════════════════════════════
 
 def _run_eventual_consistency():
     """Eventual consistency demonstrasyonu:
@@ -338,146 +398,171 @@ def _run_eventual_consistency():
     }
 
 
-# ── Experiment 3: Read-After-Write (w=1, async) ───────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+# Experiment 3 — Read-After-Write  (DDIA Figure 5-3)
+# ═══════════════════════════════════════════════════════════════════════════════
 
 def _run_read_after_write():
-    """w=1 ile yazar, primary'den okur (RAW) — her zaman taze.
-    Secondary'den okursa stale gelebilir çünkü w=1 async replication.
+    """RAW consistency — single user, two read paths (mirrors DDIA Figure 5-3).
 
-    Senaryo: Dispatcher incident girer → primary RAW path ile doğrular.
-    w=1 olduğu için ok çok hızlı döner ama secondary geride kalabilir.
+    The anomaly: after writing to PRIMARY with w=1 (async), the user's next
+    read hits SECONDARY and sees "no results" — their own write is invisible.
+    A load balancer can route the read to a different node than the write.
+
+    The fix: route reads to PRIMARY for the session that performed the write.
+    This guarantees the writer always sees their own write immediately.
+
+    Timeline:
+      Client → Primary:   write incident (w=1)
+      Primary → Client:   ok (immediately, secondary not yet updated)
+      Primary ⇢ Secondary: oplog (async)
+
+      Client → Secondary: read (wrong path — stale replica hit)
+      Secondary → Client: ⚡ stale!  ← this IS the RAW anomaly
+
+      Client → Primary:   read (RAW path — correct routing to PRIMARY)
+      Primary → Client:   ✓ fresh  ← RAW satisfied
     """
-    operations.set_write_concern(1)  # async — fast write
+    with _write_concern(1):
+        t0 = _ms()
+        item_id, _ = operations.insert_incident(
+            "RAW-EXP", "breakdown", "critical",
+            "RAW demo — dispatcher files incident"
+        )
+        t1 = _ms()
+        write_ms = t1 - t0
+        half_w   = _safe_lat(write_ms / 2)
 
-    t0 = _ms()
-    item_id, _ = operations.insert_incident(
-        "RAW-EXP", "breakdown", "critical",
-        "Dispatcher files incident — Read-After-Write experiment (w=1)"
-    )
-    t1 = _ms()
-    write_ms = t1 - t0  # ~3-5ms with w=1
+        # ── RAW read: hit PRIMARY first (correct routing — "yazdığın yerde oku") ─
+        t_raw1   = _ms() - t0
+        pri_doc  = db.get_primary()["incidents"].find_one({"_id": item_id})
+        t_raw2   = _ms() - t0
+        rtt_raw  = t_raw2 - t_raw1
+        half_raw = _safe_lat(rtt_raw / 2)
 
-    # Read from PRIMARY (read-after-write path) — always fresh
-    t_rp1 = _ms() - t0
-    pri_doc = db.get_primary()["incidents"].find_one({"_id": item_id})
-    t_rp2 = _ms() - t0
+        # ── Stale read: SECONDARY after the fact (shows the anomaly) ─────────
+        t_stale1   = _ms() - t0
+        sec_doc    = db.get_secondary()["incidents"].find_one({"_id": item_id})
+        t_stale2   = _ms() - t0
+        stale      = sec_doc is None
+        rtt_stale  = t_stale2 - t_stale1
+        half_stale = _safe_lat(rtt_stale / 2)
 
-    # Read from SECONDARY — may be stale with w=1
-    time.sleep(0.010)
-    t_rs1 = _ms() - t0
-    sec_doc = db.get_secondary()["incidents"].find_one({"_id": item_id})
-    t_rs2 = _ms() - t0
+        log = _get_log(item_id)
 
-    log = _get_log(item_id)
-    d = write_ms
-
-    # Use half-RTT for each measured request-response pair so that
-    # the response arrow always starts where the request arrow ends (V-shape, no X-crossing).
-    half_d    = max(d / 2, 1.0)
-    rtt_p     = t_rp2 - t_rp1
-    half_rtt_p = max(rtt_p / 2, 1.0)
-    rtt_s     = t_rs2 - t_rs1
-    half_rtt_s = max(rtt_s / 2, 1.0)
-
+    # ── Build events ─────────────────────────────────────────────────────────
     events = [
-        # Write (w=1): half_d each way → V-shape, ok departs exactly when write arrives
-        {"t_ms": 0,                 "latency_ms": half_d,      "from": "client",    "to": "primary",   "label": "write incident (w=1)",               "type": "write"},
-        {"t_ms": half_d,            "latency_ms": half_d,      "from": "primary",   "to": "client",    "label": f"ok ({d:.1f}ms) — immediately",      "type": "ok"},
-        # Async oplog starts when write arrives at primary
-        {"t_ms": half_d,            "latency_ms": 30,          "from": "primary",   "to": "secondary", "label": "oplog (async)",                      "type": "replicate"},
-        # Primary read: half-RTT each way → V-shape
-        {"t_ms": t_rp1,             "latency_ms": half_rtt_p,  "from": "client",    "to": "primary",   "label": "read — RAW path (primary)",          "type": "read"},
-        {"t_ms": t_rp1 + half_rtt_p,"latency_ms": half_rtt_p,  "from": "primary",   "to": "client",    "label": f"✓ fresh ({rtt_p:.1f}ms) — always",  "type": "fresh_response"},
-        # Secondary read: half-RTT each way → V-shape, no crossing regardless of RTT
-        {"t_ms": t_rs1,             "latency_ms": half_rtt_s,  "from": "client",    "to": "secondary", "label": "read — secondary (comparison)",      "type": "read"},
-        {"t_ms": t_rs1 + half_rtt_s,"latency_ms": half_rtt_s,  "from": "secondary", "to": "client",
-         "label": f"{'✓ fresh' if sec_doc else '⚡ stale'} ({rtt_s:.1f}ms)",
-         "type": "fresh_response" if sec_doc else "stale_response"},
+        # Write (w=1): ok departs immediately without waiting for secondary
+        {"t_ms": 0,          "latency_ms": half_w,      "from": "client",    "to": "primary",
+         "label": "write incident (w=1)",              "type": "write"},
+        {"t_ms": half_w,     "latency_ms": half_w,      "from": "primary",   "to": "client",
+         "label": f"ok ({write_ms:.1f}ms) — immediately", "type": "ok"},
+        # Async oplog — secondary will catch up eventually
+        {"t_ms": half_w,     "latency_ms": _safe_lat(35), "from": "primary", "to": "secondary",
+         "label": "oplog (async)",                     "type": "replicate"},
+
+        # RAW read from PRIMARY — the correct path ("yazdığın yerde oku")
+        {"t_ms": t_raw1,     "latency_ms": half_raw,    "from": "client",    "to": "primary",
+         "label": "read (RAW path — PRIMARY)",         "type": "read"},
+        {"t_ms": t_raw1 + half_raw, "latency_ms": half_raw, "from": "primary", "to": "client",
+         "label": f"✓ fresh ({rtt_raw:.1f}ms) — always", "type": "fresh_response"},
+
+        # Stale read from SECONDARY — the anomaly ("wrong path" shows why RAW matters)
+        {"t_ms": t_stale1,   "latency_ms": half_stale,  "from": "client",    "to": "secondary",
+         "label": "read (wrong path)",                 "type": "read"},
+        {"t_ms": t_stale1 + half_stale, "latency_ms": half_stale, "from": "secondary", "to": "client",
+         "label": "⚡ stale! (write not propagated)" if stale else "✓ fresh (fast sync)",
+         "type": "stale_response" if stale else "fresh_response"},
     ]
 
-    operations.set_write_concern("majority")
+    repl_ms = (log.get("replication_delay_ms") if log else None)
 
     return {
         "experiment":  "read_after_write",
-        "title":       "Read-After-Write Consistency (w=1, async)",
-        "description": "w=1 ile yazılır — primary'den her zaman taze okunur. Secondary w=1 nedeniyle geride kalabilir.",
+        "title":       "Read-After-Write Consistency",
+        "description": (
+            "Yazıdan sonra SECONDARY'den okursak kendi yazımızı göremeyebiliriz. "
+            "RAW çözümü: write yapan session için okumaları PRIMARY'ye yönlendir. "
+            "(DDIA Figure 5-3)"
+        ),
+        "actors":      DEFAULT_ACTORS,
+        "actor_order": DEFAULT_ACTOR_ORDER,
         "events":      events,
         "log":         _serialize_log(log),
         "summary": {
             "write_concern":        "1 (async)",
-            "write_returned_ms":    round(d, 2),
-            "primary_read_ms":      round(t_rp2 - t_rp1, 2),
-            "primary_fresh":        pri_doc is not None,
-            "secondary_fresh":      sec_doc is not None,
+            "write_returned_ms":    round(write_ms, 2),
+            "stale_read_observed":  stale,
+            "raw_read_ms":          round(rtt_raw, 2),
+            "raw_fresh":            pri_doc is not None,
+            "replication_delay_ms": round(repl_ms, 2) if repl_ms else None,
             "consistency_model":    "Read-After-Write",
             "consistency_achieved": pri_doc is not None,
         },
     }
 
 
-# ── Experiment 4: Monotonic Reads ─────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+# Experiment 4 — Monotonic Reads
+# ═══════════════════════════════════════════════════════════════════════════════
 
 def _run_monotonic_reads():
     """Secondary'den okunan version numarası asla geri gidemez.
 
-    w=1 kullanarak lag oluşturur, sonra secondary'den ardışık okumalar yapar.
+    w=1 ile 4 write yapar (pending → in_transit → in_transit → delivered),
+    ardından secondary'den 5 kez okur. Her okuma öncekinden küçük bir version
+    dönemez — monotonicity ihlal edilirse test FAIL'dir.
     """
-    operations.set_write_concern(1)
+    with _write_concern(1):
+        t0 = _ms()
 
-    t0 = _ms()
+        shp_id, _ = operations.insert_shipment(
+            "MON-EXP", "DEP-IST", "DEP-ANK", "MonotonicTest",
+            300, 3, status="pending"
+        )
+        write_times = [_ms() - t0]
 
-    shp_id, _ = operations.insert_shipment(
-        "MON-EXP", "DEP-IST", "DEP-ANK", "MonotonicTest",
-        300, 3, status="pending"
-    )
-    write_times = [_ms() - t0]
+        statuses = ["in_transit", "in_transit", "delivered"]
+        for status in statuses:
+            operations.update_item(shp_id, {
+                "shipment_id": "MON-EXP", "origin_depot": "DEP-IST",
+                "destination_depot": "DEP-ANK", "customer": "MonotonicTest",
+                "weight_kg": 300, "package_count": 3,
+                "status": status, "assigned_vehicle_id": None,
+            }, collection="shipments")
+            write_times.append(_ms() - t0)
 
-    statuses = ["in_transit", "in_transit", "delivered"]
-    for status in statuses:
-        operations.update_item(shp_id, {
-            "shipment_id": "MON-EXP", "origin_depot": "DEP-IST",
-            "destination_depot": "DEP-ANK", "customer": "MonotonicTest",
-            "weight_kg": 300, "package_count": 3,
-            "status": status, "assigned_vehicle_id": None,
-        }, collection="shipments")
-        write_times.append(_ms() - t0)
-
-    # Read from secondary at intervals to show version progression
-    reads = []
-    time.sleep(0.03)
-    for _ in range(5):
-        t_r = _ms() - t0
-        doc = db.get_secondary()["shipments"].find_one({"_id": shp_id})
-        t_r_end = _ms() - t0
-        reads.append({
-            "t_ms":    t_r,
-            "t_end_ms": t_r_end,
-            "version": doc.get("version") if doc else None,
-            "status":  doc.get("value", {}).get("status") if doc else "—",
-        })
-        time.sleep(0.08)
+        # Read from secondary at intervals to capture version progression
+        reads = []
+        time.sleep(0.03)
+        for _ in range(5):
+            t_r = _ms() - t0
+            doc = db.get_secondary()["shipments"].find_one({"_id": shp_id})
+            t_r_end = _ms() - t0
+            reads.append({
+                "t_ms":     t_r,
+                "t_end_ms": t_r_end,
+                "version":  doc.get("version") if doc else None,
+                "status":   doc.get("value", {}).get("status") if doc else "—",
+            })
+            time.sleep(0.08)
 
     versions = [r["version"] for r in reads if r["version"] is not None]
     monotonic = all(versions[i] <= versions[i+1] for i in range(len(versions)-1))
 
-    operations.set_write_concern("majority")
-
-    # Build events — ok starts AFTER write arrives at primary (no crossing)
+    # Build events
     events = []
-    labels = ["insert (pending)", "Update: in_transit", "Update: in_transit", "Update: delivered"]
+    labels = ["insert (pending)", "update: in_transit", "update: in_transit", "update: delivered"]
     for i, (t_ms, lbl) in enumerate(zip(write_times, labels)):
-        # Write: client → primary (3ms latency, going down)
-        events.append({"t_ms": t_ms,     "latency_ms": 3,  "from": "client",  "to": "primary",   "label": lbl,            "type": "write"})
-        # ok: primary → client, starts AFTER write arrives (t_ms+3), clean V shape
-        events.append({"t_ms": t_ms + 3, "latency_ms": 3,  "from": "primary", "to": "client",    "label": f"ok v{i+1}",   "type": "ok"})
-        # Async oplog: starts after write arrives, long latency
-        events.append({"t_ms": t_ms + 4, "latency_ms": 28, "from": "primary", "to": "secondary", "label": f"oplog v{i+1}", "type": "replicate"})
+        events.append({"t_ms": t_ms,     "latency_ms": _safe_lat(3),  "from": "client",  "to": "primary",   "label": lbl,              "type": "write"})
+        events.append({"t_ms": t_ms + 3, "latency_ms": _safe_lat(3),  "from": "primary", "to": "client",    "label": f"ok v{i+1}",     "type": "ok"})
+        events.append({"t_ms": t_ms + 4, "latency_ms": _safe_lat(28), "from": "primary", "to": "secondary", "label": f"oplog v{i+1}",  "type": "replicate"})
 
     for r in reads:
-        v = r["version"]
-        s = r["status"]
-        half_rtt = max((r["t_end_ms"] - r["t_ms"]) / 2, 1.0)
-        events.append({"t_ms": r["t_ms"],            "latency_ms": half_rtt, "from": "client",    "to": "secondary", "label": "read",               "type": "read"})
+        v        = r["version"]
+        s        = r["status"]
+        half_rtt = _safe_lat((r["t_end_ms"] - r["t_ms"]) / 2)
+        events.append({"t_ms": r["t_ms"],            "latency_ms": half_rtt, "from": "client",    "to": "secondary", "label": "read",                     "type": "read"})
         events.append({"t_ms": r["t_ms"] + half_rtt, "latency_ms": half_rtt, "from": "secondary", "to": "client",
                         "label": f"v{v} ({s})" if v else "—",
                         "type": "fresh_response" if v else "stale_response"})
@@ -485,7 +570,9 @@ def _run_monotonic_reads():
     return {
         "experiment":  "monotonic_reads",
         "title":       "Monotonic Reads",
-        "description": "Secondary'den ardışık okumalar asla önceki versiyondan düşük dönemez. w=1 ile lag görünür hale gelir.",
+        "description": "Secondary'den ardışık okumalar asla önceki versiyondan düşük dönemez. w=1 ile replication lag görünür hale gelir.",
+        "actors":      DEFAULT_ACTORS,
+        "actor_order": DEFAULT_ACTOR_ORDER,
         "events":      events,
         "log":         None,
         "reads":       reads,
