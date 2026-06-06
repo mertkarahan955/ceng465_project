@@ -38,13 +38,13 @@ def run_monotonic_reads():
         t_w1 = ms() - t0  # write returned at this offset from t0
 
         # Poll secondary until v1 is visible so reads start from a known state
+        t_poll_rel     = ms() - t0   # t0-relative timestamp, right before polling
         repl_ms_actual = None
-        t_poll   = ms()
-        deadline = time.time() + 5.0
+        deadline       = time.time() + 5.0
         while time.time() < deadline:
             doc = db.get_secondary()["shipments"].find_one({"_id": shp_id})
             if doc:
-                repl_ms_actual = ms() - t_poll
+                repl_ms_actual = ms() - (t0 + t_poll_rel)
                 break
             time.sleep(0.002)
 
@@ -66,6 +66,9 @@ def run_monotonic_reads():
     versions  = [r["version"] for r in reads]
     monotonic = all(versions[i] <= versions[i + 1] for i in range(len(versions) - 1))
 
+    secondary_applied_ms = t_poll_rel + repl_ms_actual if repl_ms_actual else t_w1 + (repl_ms or 20)
+    total_repl_ms        = secondary_applied_ms - t_w1
+
     events = [
         # Write shipment — N_/ (N=network) using measured net_p
         *req_resp_events(
@@ -74,11 +77,17 @@ def run_monotonic_reads():
             "write shipment (w=1)", "write",
             f"ok v1 ({t_w1:.1f}ms)", "ok",
         ),
-        # Oplog: departs from primary after commit (net_p into timeline)
+        # Oplog: departs from primary after commit; lands at secondary quickly
         {"t_ms": safe_lat(net_p),
-         "latency_ms": safe_lat(repl_ms_actual or 20),
+         "latency_ms": safe_lat(net_s),
          "from": "primary", "to": "secondary",
-         "label": f"oplog (async, ~{(repl_ms_actual or 0):.1f}ms)", "type": "replicate"},
+         "label": "oplog (async)", "type": "replicate"},
+        # Ack: secondary finishes applying v1 — pairs with oplog for span line
+        {"t_ms": secondary_applied_ms,
+         "latency_ms": safe_lat(net_s),
+         "from": "secondary", "to": "primary",
+         "label": f"✓ write applied (v1) — {total_repl_ms:.0f}ms after write",
+         "type": "ack"},
     ]
 
     prev_v = None

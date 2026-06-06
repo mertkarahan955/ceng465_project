@@ -1,0 +1,83 @@
+{
+  "saved_at": "2026-06-06T23:30:14.771401",
+  "experiment": "sync_replication",
+  "title": "Synchronous Replication (w=majority)",
+  "description": "Primary, follower ACK'ini bekler. İstemci ancak secondary onayladıktan sonra 'ok' alır. Daha güvenli ama daha yavaş.",
+  "actors": {
+    "client": {
+      "label": "Client / Dashboard",
+      "color": "#e6edf3",
+      "ip": "(control node)"
+    },
+    "primary": {
+      "label": "PRIMARY",
+      "color": "#3fb950",
+      "ip": "192.168.88.30"
+    },
+    "secondary": {
+      "label": "SECONDARY",
+      "color": "#58a6ff",
+      "ip": "192.168.88.70"
+    }
+  },
+  "actor_order": [
+    "client",
+    "primary",
+    "secondary"
+  ],
+  "events": [
+    {
+      "t_ms": 0,
+      "latency_ms": 8.41748046875,
+      "from": "client",
+      "to": "primary",
+      "label": "write (w=majority)",
+      "type": "write"
+    },
+    {
+      "t_ms": 14.485519531249999,
+      "latency_ms": 8.41748046875,
+      "from": "primary",
+      "to": "client",
+      "label": "ok (22.9 ms)",
+      "type": "ok"
+    },
+    {
+      "t_ms": 8.41748046875,
+      "latency_ms": 2.066162109375,
+      "from": "primary",
+      "to": "secondary",
+      "label": "oplog → apply",
+      "type": "replicate"
+    },
+    {
+      "t_ms": 12.419357421874999,
+      "latency_ms": 2.066162109375,
+      "from": "secondary",
+      "to": "primary",
+      "label": "ACK ✓",
+      "type": "ack"
+    }
+  ],
+  "log": {
+    "log_index": 494,
+    "operation_id": "61dc934b",
+    "version_before": null,
+    "version_after": 1,
+    "write_concern": "majority",
+    "status": "visible_on_follower",
+    "replication_delay_ms": 22.903,
+    "leader_write_time": "2026-06-06T20:30:14.722000",
+    "follower_visible_time": "2026-06-06T20:30:14.745000",
+    "target_collection": "positions"
+  },
+  "summary": {
+    "write_concern": "majority",
+    "write_returned_ms": 22.9,
+    "replication_delay_ms": 22.9,
+    "consistency_model": "Synchronous",
+    "version_after": 1,
+    "consistency_achieved": true,
+    "stale_read_possible": false
+  }
+}

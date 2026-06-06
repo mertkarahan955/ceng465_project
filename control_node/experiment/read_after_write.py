@@ -48,21 +48,31 @@ def run_read_after_write():
         t_stale2 = ms() - t0
         stale    = sec_doc is None
 
-        # If secondary didn't have it yet, poll briefly so we can log repl time
+        # Poll secondary to measure when write becomes visible there
+        t_poll_rel     = ms() - t0   # t0-relative timestamp, right before polling
         repl_ms_actual = None
         if stale:
-            t_poll   = ms()
             deadline = time.time() + 5.0
             while time.time() < deadline:
                 doc = db.get_secondary()["incidents"].find_one({"_id": item_id})
                 if doc:
-                    repl_ms_actual = ms() - t_poll
+                    repl_ms_actual = ms() - (t0 + t_poll_rel)
                     break
                 time.sleep(0.002)
 
         log = get_log(item_id)
 
     repl_ms = repl_ms_actual or (log.get("replication_delay_ms") if log else None) or 5.0
+
+    # When did secondary finish applying the write?
+    if stale and repl_ms_actual:
+        secondary_applied_ms = t_poll_rel + repl_ms_actual
+    elif not stale:
+        secondary_applied_ms = t_stale2   # already visible by the time we read it
+    else:
+        secondary_applied_ms = write_ms + repl_ms
+
+    total_repl_ms = secondary_applied_ms - write_ms
 
     events = [
         # Write (w=1) — N_/ (N=network) shape using measured net_p
@@ -72,11 +82,17 @@ def run_read_after_write():
             "write incident (w=1)", "write",
             f"ok ({write_ms:.1f}ms) — immediately", "ok",
         ),
-        # Async oplog departs from primary after it commits (net_p into timeline)
+        # Async oplog: primary sends after commit; secondary applies at secondary_applied_ms
         {"t_ms": safe_lat(net_p),
-         "latency_ms": safe_lat(repl_ms),
+         "latency_ms": safe_lat(net_s),
          "from": "primary", "to": "secondary",
-         "label": f"oplog (async, ~{repl_ms:.1f}ms)", "type": "replicate"},
+         "label": "oplog (async)", "type": "replicate"},
+        # Ack from secondary when write is applied — pairs with oplog for span line
+        {"t_ms": secondary_applied_ms,
+         "latency_ms": safe_lat(net_s),
+         "from": "secondary", "to": "primary",
+         "label": f"{'✓' if not stale else '✓'} write applied — {total_repl_ms:.0f}ms after write",
+         "type": "ack"},
 
         # RAW read from PRIMARY — N_/ (N=network) shape using measured net_p
         *req_resp_events(
