@@ -1,4 +1,13 @@
-"""Experiment 3 — Read-After-Write (DDIA Figure 5-3)."""
+"""Experiment 3 — Read-After-Write (DDIA Figure 5-3).
+
+Spec:
+  Setup:    A client writes a record on the leader node.
+  Test:     Immediately read the record back from the leader to confirm it
+            reflects the latest write.
+  Expected: The client should immediately see their write on the leader;
+            other clients may experience a delay on followers.
+  Observe:  Record the time followers take to reflect the new data.
+"""
 
 import time
 
@@ -127,9 +136,13 @@ def run_read_after_write():
         "summary": {
             "write_concern":        "1 (async)",
             "write_returned_ms":    round(write_ms, 2),
-            "stale_read_observed":  stale,
+            # Observation: did the leader immediately confirm the write?
             "raw_read_ms":          round(t_raw2 - t_raw1, 2),
             "raw_fresh":            pri_doc is not None,
+            # Observation: did the follower see a stale copy right after the write?
+            "stale_read_observed":  stale,
+            # Observation: how long did the follower take to reflect the new data?
+            "follower_sync_ms":     round(repl_ms, 2) if repl_ms else None,
             "replication_delay_ms": round(repl_ms, 2) if repl_ms else None,
             "consistency_model":    "Read-After-Write",
             "consistency_achieved": pri_doc is not None,

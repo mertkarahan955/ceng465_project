@@ -651,12 +651,18 @@ function renderResult(result, fromHistory) {
     }
   } else if (summary.monotonic_violated !== undefined) {
     if (summary.monotonic_violated) {
+      const bk = (summary.backward_reads || [])
+        .map(b => `v${b.from_version}→v${b.to_version} @ read #${b.read_index}`)
+        .join(', ');
       verdictClass = 'verdict-fail';
-      verdictText  = '✗ MONOTONIC VIOLATED — version went backwards on SECONDARY';
+      verdictText  = '✗ MONOTONIC VIOLATED — version went backwards on SECONDARY'
+        + (bk ? ': ' + bk : '');
     } else {
+      const written = (summary.versions_written || []).map(v => 'v' + v).join('→');
+      const seen    = (summary.versions_seen    || []).map(v => 'v' + v).join('→');
       verdictClass = 'verdict-ok';
-      verdictText  = '✓ MONOTONIC HOLDS — SECONDARY versions never went backwards (' +
-        (summary.versions_seen || []).map(v => 'v' + v).join(' → ') + ')';
+      verdictText  = '✓ MONOTONIC HOLDS — written ' + written
+        + ' · secondary saw ' + seen + ' (never backwards)';
     }
   } else if (stale && achieved) {
     verdictClass = 'verdict-partial';
@@ -763,25 +769,32 @@ function buildStatRows(s) {
        <div class="stat-value ${cls}">${value}</div>
      </div>`;
 
-  if (s.write_returned_ms    != null) rows.push(stat('Write returned',      s.write_returned_ms.toFixed(1)    + ' ms', 'blue'));
-  if (s.replication_delay_ms != null) rows.push(stat('Repl. delay',         s.replication_delay_ms.toFixed(1) + ' ms', 'orange'));
-  if (s.raw_read_ms          != null) rows.push(stat('PRIMARY read (RAW)',  s.raw_read_ms.toFixed(1)          + ' ms', 'green'));
-  if (s.consistency_window_ms!= null) rows.push(stat('Consistency window',  s.consistency_window_ms.toFixed(1)+ ' ms', 'orange'));
-  if (s.version_after        != null) rows.push(stat('Version after',       'v' + s.version_after,                     'white'));
-  if (s.final_version        != null) rows.push(stat('Final version',       'v' + s.final_version,                     'white'));
+  if (s.write_returned_ms  != null) rows.push(stat('Write returned',    s.write_returned_ms.toFixed(1)  + ' ms', 'blue'));
+  // RAW uses "Follower sync time" label; all other experiments use "Repl. delay"
+  if (s.follower_sync_ms   != null) rows.push(stat('Follower sync time', s.follower_sync_ms.toFixed(1)   + ' ms', 'orange'));
+  else if (s.replication_delay_ms != null) rows.push(stat('Repl. delay', s.replication_delay_ms.toFixed(1) + ' ms', 'orange'));
+  if (s.raw_read_ms        != null) rows.push(stat('Leader read (RAW)',   s.raw_read_ms.toFixed(1)        + ' ms', 'green'));
+  if (s.consistency_window_ms != null) rows.push(stat('Consistency window',    s.consistency_window_ms.toFixed(1) + ' ms', 'orange'));
+  if (s.version_after         != null) rows.push(stat('Version after',         'v' + s.version_after,                      'white'));
 
+  // RAW observations
   if (s.stale_read_observed != null)
-    rows.push(stat('Secondary read', s.stale_read_observed ? 'STALE ⚡ (anomaly)' : 'FRESH ✓ (fast)',
+    rows.push(stat('Follower read', s.stale_read_observed ? 'STALE ⚡ (anomaly)' : 'FRESH ✓ (fast)',
                    s.stale_read_observed ? 'red' : 'green'));
-
   if (s.raw_fresh != null)
-    rows.push(stat('PRIMARY read (RAW)', s.raw_fresh ? 'FRESH ✓ (always)' : 'STALE ⚡',
+    rows.push(stat('Leader read (RAW)', s.raw_fresh ? 'FRESH ✓ (always)' : 'STALE ⚡',
                    s.raw_fresh ? 'green' : 'red'));
 
+  // Monotonic Reads observations
+  if (s.versions_written && s.versions_written.length)
+    rows.push(stat('Versions written', s.versions_written.map(v => 'v' + v).join('→'), 'blue'));
   if (s.versions_seen && s.versions_seen.length)
-    rows.push(stat('Versions seen', s.versions_seen.map(v => 'v' + v).join(' → '), 'purple'));
+    rows.push(stat('Versions seen', s.versions_seen.map(v => 'v' + v).join('→'), 'purple'));
   if (s.final_version != null)
     rows.push(stat('Final version', 'v' + s.final_version, 'white'));
+  if (s.backward_count != null)
+    rows.push(stat('Backward reads', s.backward_count === 0 ? '0 ✓ (none observed)' : s.backward_count + ' ✗',
+                   s.backward_count === 0 ? 'green' : 'red'));
   if (s.monotonic_violated != null)
     rows.push(stat('Monotonic', s.monotonic_violated ? 'VIOLATED ✗' : 'HOLDS ✓',
                    s.monotonic_violated ? 'red' : 'green'));
