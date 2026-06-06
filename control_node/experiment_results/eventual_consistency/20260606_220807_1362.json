@@ -1,0 +1,95 @@
+{
+  "saved_at": "2026-06-06T22:08:07.136989",
+  "experiment": "eventual_consistency",
+  "title": "Eventual Consistency (w=1)",
+  "description": "Primary w=1 ile günceller — OK secondary beklenmeden döner. Secondary stale (eski) veriyi gösterir, sonra yakalar.",
+  "events": [
+    {
+      "t_ms": 0.002197265625,
+      "latency_ms": 0.5,
+      "from": "client",
+      "to": "secondary",
+      "label": "read (baseline)",
+      "type": "read"
+    },
+    {
+      "t_ms": 0.502197265625,
+      "latency_ms": 0.5,
+      "from": "secondary",
+      "to": "client",
+      "label": "v1 (synced)",
+      "type": "fresh_response"
+    },
+    {
+      "t_ms": 0.569091796875,
+      "latency_ms": 15.7010498046875,
+      "from": "client",
+      "to": "primary",
+      "label": "update (w=1, v1→v2)",
+      "type": "write"
+    },
+    {
+      "t_ms": 16.2701416015625,
+      "latency_ms": 15.7010498046875,
+      "from": "primary",
+      "to": "client",
+      "label": "ok (31.4ms) — no secondary wait",
+      "type": "ok"
+    },
+    {
+      "t_ms": 16.2701416015625,
+      "latency_ms": 36.613,
+      "from": "primary",
+      "to": "secondary",
+      "label": "oplog async — 36.6ms",
+      "type": "replicate"
+    },
+    {
+      "t_ms": 31.985107421875,
+      "latency_ms": 0.6375732421875,
+      "from": "client",
+      "to": "secondary",
+      "label": "read",
+      "type": "read"
+    },
+    {
+      "t_ms": 32.6226806640625,
+      "latency_ms": 0.6375732421875,
+      "from": "secondary",
+      "to": "client",
+      "label": "✓ fresh (v2)",
+      "type": "fresh_response"
+    }
+  ],
+  "log": {
+    "log_index": 248,
+    "operation_id": "dd70dd7d",
+    "version_before": null,
+    "version_after": 1,
+    "write_concern": "majority",
+    "status": "visible_on_follower",
+    "replication_delay_ms": 36.613,
+    "leader_write_time": "2026-06-06T19:08:07.037000",
+    "follower_visible_time": "2026-06-06T19:08:07.073000",
+    "target_collection": "positions"
+  },
+  "reads": [
+    {
+      "t_ms": 31.985107421875,
+      "t_end_ms": 33.26025390625,
+      "found": true,
+      "version": 2,
+      "stale_after_write": false,
+      "status": "v2"
+    }
+  ],
+  "summary": {
+    "write_concern": "1 (async)",
+    "write_returned_ms": 31.4,
+    "replication_delay_ms": 36.61,
+    "consistency_model": "Eventual",
+    "stale_read_observed": false,
+    "consistency_window_ms": 31.99,
+    "consistency_achieved": true
+  }
+}
