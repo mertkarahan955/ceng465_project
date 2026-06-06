@@ -417,14 +417,14 @@ def _run_eventual_consistency():
     # ── Build timeline events — net_p/net_s measured before experiment ────
     update_duration = write_returned_ms - write_start_ms
 
-    # Primary commits at the midpoint; oplog departs from there.
-    primary_commit_ms = write_start_ms + net_p
-    if repl_ms:
-        oplog_arrive = primary_commit_ms + repl_ms
-    elif synced_ms:
-        oplog_arrive = synced_ms
-    else:
-        oplog_arrive = write_returned_ms + 50
+    # Primary commits after net_p; oplog departs from there.
+    # synced_ms is the Python-observed time when secondary first had v2 — use
+    # it directly as the "secondary applied" timestamp (relative to t0).
+    primary_commit_ms   = write_start_ms + net_p
+    secondary_applied_ms = synced_ms if synced_ms else (
+        (primary_commit_ms + repl_ms) if repl_ms else (write_returned_ms + 50)
+    )
+    total_repl_ms = secondary_applied_ms - write_start_ms
 
     events = [
         # 1. Baseline read from secondary before the update (shows v1 is synced)
@@ -445,12 +445,24 @@ def _run_eventual_consistency():
             f"ok ({update_duration:.1f}ms) — no secondary wait", "ok",
         ),
 
-        # 3. Oplog replication (async) — primary → secondary
+        # 3. Oplog network transfer (fast — just primary → secondary network hop).
+        #    latency_ms = net_s so the arrow ends at secondary shortly after commit.
+        #    The span line between this arrow's arrival and the ack below shows the
+        #    full secondary apply time on the secondary lane.
         {"t_ms": primary_commit_ms,
-         "latency_ms": max(oplog_arrive - primary_commit_ms, 2),
+         "latency_ms": _safe_lat(net_s),
          "from": "primary", "to": "secondary",
-         "label": f"oplog async — {max(oplog_arrive - primary_commit_ms, 0):.1f}ms",
+         "label": "oplog async",
          "type": "replicate"},
+
+        # 4. Secondary finishes applying the write at secondary_applied_ms.
+        #    type=ack pairs with the replicate above → renderer draws a shaded
+        #    span line on the secondary lane covering the full apply duration.
+        {"t_ms": secondary_applied_ms,
+         "latency_ms": _safe_lat(net_s),
+         "from": "secondary", "to": "primary",
+         "label": f"✓ write applied (v2) — {total_repl_ms:.0f}ms after write",
+         "type": "ack"},
     ]
 
     # ── Post-update secondary reads ────────────────────────────────
@@ -588,7 +600,7 @@ def _run_read_after_write():
             "write_concern":        "1 (async)",
             "write_returned_ms":    round(write_ms, 2),
             "stale_read_observed":  stale,
-            "raw_read_ms":          round(rtt_raw, 2),
+            "raw_read_ms":          round(t_raw2 - t_raw1, 2),
             "raw_fresh":            pri_doc is not None,
             "replication_delay_ms": round(repl_ms, 2) if repl_ms else None,
             "consistency_model":    "Read-After-Write",

@@ -1,0 +1,167 @@
+{
+  "saved_at": "2026-06-06T22:43:06.068239",
+  "experiment": "eventual_consistency",
+  "title": "Eventual Consistency (w=1)",
+  "description": "Primary w=1 ile günceller — OK secondary beklenmeden döner. Secondary stale (eski) veriyi gösterir, sonra yakalar.",
+  "events": [
+    {
+      "t_ms": 0.001708984375,
+      "latency_ms": 0.5,
+      "from": "client",
+      "to": "secondary",
+      "label": "read (baseline)",
+      "type": "read"
+    },
+    {
+      "t_ms": 1.001708984375,
+      "latency_ms": 0.5,
+      "from": "secondary",
+      "to": "client",
+      "label": "v1 (synced)",
+      "type": "fresh_response"
+    },
+    {
+      "t_ms": 1.0439453125,
+      "latency_ms": 4.077392578125,
+      "from": "client",
+      "to": "primary",
+      "label": "update (w=1, v1→v2)",
+      "type": "write"
+    },
+    {
+      "t_ms": 26.560546875,
+      "latency_ms": 4.077392578125,
+      "from": "primary",
+      "to": "client",
+      "label": "ok (29.6ms) — no secondary wait",
+      "type": "ok"
+    },
+    {
+      "t_ms": 5.121337890625,
+      "latency_ms": 621.2090000000001,
+      "from": "primary",
+      "to": "secondary",
+      "label": "oplog async — 621.2ms",
+      "type": "replicate"
+    },
+    {
+      "t_ms": 230.85498046875,
+      "latency_ms": 0.5,
+      "from": "client",
+      "to": "secondary",
+      "label": "read",
+      "type": "read"
+    },
+    {
+      "t_ms": 231.89794921875,
+      "latency_ms": 0.5,
+      "from": "secondary",
+      "to": "client",
+      "label": "⚡ stale (v1 — old)",
+      "type": "stale_response"
+    },
+    {
+      "t_ms": 534.950927734375,
+      "latency_ms": 0.5,
+      "from": "client",
+      "to": "secondary",
+      "label": "read",
+      "type": "read"
+    },
+    {
+      "t_ms": 535.950927734375,
+      "latency_ms": 0.5,
+      "from": "secondary",
+      "to": "client",
+      "label": "⚡ stale (v1 — old)",
+      "type": "stale_response"
+    },
+    {
+      "t_ms": 1032.126953125,
+      "latency_ms": 0.5,
+      "from": "client",
+      "to": "secondary",
+      "label": "read",
+      "type": "read"
+    },
+    {
+      "t_ms": 1033.479736328125,
+      "latency_ms": 0.5,
+      "from": "secondary",
+      "to": "client",
+      "label": "⚡ stale (v1 — old)",
+      "type": "stale_response"
+    },
+    {
+      "t_ms": 1534.9619140625,
+      "latency_ms": 0.5,
+      "from": "client",
+      "to": "secondary",
+      "label": "read",
+      "type": "read"
+    },
+    {
+      "t_ms": 1535.9619140625,
+      "latency_ms": 0.5,
+      "from": "secondary",
+      "to": "client",
+      "label": "✓ fresh (v2)",
+      "type": "fresh_response"
+    }
+  ],
+  "log": {
+    "log_index": 348,
+    "operation_id": "f977eed7",
+    "version_before": null,
+    "version_after": 1,
+    "write_concern": "1",
+    "status": "visible_on_follower",
+    "replication_delay_ms": 621.2090000000001,
+    "leader_write_time": "2026-06-06T19:43:03.333000",
+    "follower_visible_time": "2026-06-06T19:43:03.954000",
+    "target_collection": "positions"
+  },
+  "reads": [
+    {
+      "t_ms": 230.85498046875,
+      "t_end_ms": 232.39794921875,
+      "found": true,
+      "version": 1,
+      "stale_after_write": true,
+      "status": "v1"
+    },
+    {
+      "t_ms": 534.950927734375,
+      "t_end_ms": 535.97705078125,
+      "found": true,
+      "version": 1,
+      "stale_after_write": true,
+      "status": "v1"
+    },
+    {
+      "t_ms": 1032.126953125,
+      "t_end_ms": 1033.979736328125,
+      "found": true,
+      "version": 1,
+      "stale_after_write": true,
+      "status": "v1"
+    },
+    {
+      "t_ms": 1534.9619140625,
+      "t_end_ms": 1536.07666015625,
+      "found": true,
+      "version": 2,
+      "stale_after_write": false,
+      "status": "v2"
+    }
+  ],
+  "summary": {
+    "write_concern": "1 (async)",
+    "write_returned_ms": 29.59,
+    "replication_delay_ms": 621.21,
+    "consistency_model": "Eventual",
+    "stale_read_observed": true,
+    "consistency_window_ms": 1534.96,
+    "consistency_achieved": true
+  }
+}
