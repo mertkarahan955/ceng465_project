@@ -1,3 +1,14 @@
+"""Replication operations layer for CENG465 Single-Leader demo.
+
+Core write functions (insert_item / update_item / delete_item) are collection-
+agnostic: pass ``collection="vehicles"`` etc. to target any of the 6 fleet
+collections. Default is ``"items"`` for backward compatibility.
+
+Fleet domain layer sits on top: thin wrappers that build the correct key/value
+shape and route to the right collection.  Access pattern query functions
+demonstrate the three consistency models by reading from PRIMARY vs SECONDARY.
+"""
+
 import uuid
 import time
 import threading
@@ -17,6 +28,7 @@ _write_concern = "majority"   # toggled via dashboard; "majority" (sync) or 1 (a
 _reconciler_started = False
 _reconciler_lock = threading.Lock()
 _health_lock = threading.Lock()
+_log_index_lock = threading.Lock()
 _pending_statuses = ("pending_follower", "timeout")
 _secondary_health = {
     "reachable": False,
@@ -33,6 +45,8 @@ _secondary_health = {
 }
 
 
+# ── Write concern ──────────────────────────────────────────────────────────────
+
 def set_write_concern(w):
     """Accepts 'majority', 1, or '1'. Numeric values are stored as int so that
     PyMongo sends them as a numeric w-value rather than a custom tag name."""
@@ -48,14 +62,17 @@ def get_write_concern():
     return _write_concern
 
 
+# ── Internal helpers ───────────────────────────────────────────────────────────
+
 def _next_op():
     global _log_index, _log_index_initialized
-    if not _log_index_initialized:
-        last = db.get_primary()["operation_logs"].find_one(sort=[("log_index", -1)])
-        _log_index = last.get("log_index", 0) if last else 0
-        _log_index_initialized = True
-    _log_index += 1
-    return str(uuid.uuid4()), _log_index
+    with _log_index_lock:
+        if not _log_index_initialized:
+            last = db.get_primary()["operation_logs"].find_one(sort=[("log_index", -1)])
+            _log_index = last.get("log_index", 0) if last else 0
+            _log_index_initialized = True
+        _log_index += 1
+        return str(uuid.uuid4()), _log_index
 
 
 def _now():
@@ -87,7 +104,10 @@ def _require_secondary_for_majority():
         db.get_secondary().command("ping")
     except PyMongoError as exc:
         _set_secondary_health(False, _now(), error=exc)
-        raise RuntimeError("w=majority requires the secondary to be reachable; write rejected before primary mutation")
+        raise RuntimeError(
+            "w=majority requires the secondary to be reachable; "
+            "write rejected before primary mutation"
+        )
 
 
 def _coerce_target_id(target_id):
@@ -106,14 +126,19 @@ def _coerce_target_id(target_id):
     return target_id
 
 
-def _secondary_has_state(target_id, version_after, log_index=None, operation_id=None):
+# ── Replication visibility checks ─────────────────────────────────────────────
+
+def _secondary_has_state(
+    target_id, version_after, log_index=None, operation_id=None, collection="items"
+):
+    """Return True if secondary already has version_after (or higher) for this doc."""
     secondary = db.get_secondary()
-    doc = secondary["items"].find_one(
+    doc = secondary[collection].find_one(
         {"_id": _coerce_target_id(target_id)},
         {"version": 1, "last_log_index": 1},
     )
     if not doc and operation_id:
-        doc = secondary["items"].find_one(
+        doc = secondary[collection].find_one(
             {"last_operation_id": operation_id},
             {"version": 1, "last_log_index": 1},
         )
@@ -132,17 +157,19 @@ def _secondary_has_state(target_id, version_after, log_index=None, operation_id=
     return False
 
 
-def _poll_secondary(target_id, version_after, operation_id):
+def _poll_secondary(target_id, version_after, operation_id, collection="items"):
     deadline = time.time() + config.POLL_TIMEOUT_MS / 1000
     while time.time() < deadline:
         try:
-            if _secondary_has_state(target_id, version_after):
+            if _secondary_has_state(target_id, version_after, collection=collection):
                 return datetime.now(timezone.utc)
         except PyMongoError:
             return None
         time.sleep(config.POLL_INTERVAL_MS / 1000)
     return None
 
+
+# ── Operation log helpers ──────────────────────────────────────────────────────
 
 def _write_log(entry: dict):
     return db.get_primary()["operation_logs"].insert_one(entry).inserted_id
@@ -164,7 +191,7 @@ def _mark_log_visible(log_id, leader_write_time):
 
 
 def mark_pending_logs_visible_for_item(target_id, secondary_version, secondary_log_index=None):
-    """Close pending logs for an item once the item table proves it is synced."""
+    """Close pending logs for a document once the item table proves it is synced."""
     if not isinstance(secondary_version, Integral):
         return 0
 
@@ -191,7 +218,10 @@ def mark_pending_logs_visible_for_item(target_id, secondary_version, secondary_l
 
             version_after = log.get("version_after")
             log_index = log.get("log_index")
-            version_matches = isinstance(version_after, Integral) and int(secondary_version) >= int(version_after)
+            version_matches = (
+                isinstance(version_after, Integral)
+                and int(secondary_version) >= int(version_after)
+            )
             log_matches = (
                 isinstance(secondary_log_index, Integral)
                 and isinstance(log_index, Integral)
@@ -212,8 +242,8 @@ def _mark_log_timeout(log_id):
     )
 
 
-def _complete_log_visibility(log_id, target_id, version_after, leader_write_time):
-    follower_visible_time = _poll_secondary(target_id, version_after, None)
+def _complete_log_visibility(log_id, target_id, version_after, leader_write_time, collection="items"):
+    follower_visible_time = _poll_secondary(target_id, version_after, None, collection=collection)
     if not follower_visible_time:
         _mark_log_timeout(log_id)
         return None
@@ -239,13 +269,14 @@ def _log_entry(
     version_before,
     version_after,
     client_id,
+    collection="items",
 ):
     return {
         "operation_id": operation_id,
         "leader_term": _leader_term,
         "log_index": log_index,
         "operation_type": operation_type,
-        "target_collection": "items",
+        "target_collection": collection,
         "target_id": target_id,
         "leader_write_time": leader_write_time,
         "follower_visible_time": None,
@@ -258,13 +289,13 @@ def _log_entry(
     }
 
 
+# ── Background reconciliation ──────────────────────────────────────────────────
+
 def reconcile_pending_once(limit=None):
     """Complete pending/timeout log entries once the secondary catches up.
 
-    This is the dashboard's async recovery path for w=1 writes. The write
-    request records a durable operation log on the primary and returns
-    immediately; this function later observes the secondary and fills in the
-    follower visibility fields.
+    Reads ``target_collection`` from each log so it queries the right collection
+    (works for all 6 fleet collections + legacy "items").
     """
     limit = limit or config.RECONCILE_BATCH_SIZE
     primary = db.get_primary()
@@ -285,10 +316,13 @@ def reconcile_pending_once(limit=None):
         log_index = log.get("log_index")
         operation_id = log.get("operation_id")
         leader_write_time = log.get("leader_write_time")
+        collection = log.get("target_collection", "items")
         if not target_id or not isinstance(version_after, Integral) or not leader_write_time:
             continue
         try:
-            if _secondary_has_state(target_id, version_after, log_index, operation_id):
+            if _secondary_has_state(
+                target_id, version_after, log_index, operation_id, collection=collection
+            ):
                 _mark_log_visible(log["_id"], leader_write_time)
                 updated += 1
         except PyMongoError:
@@ -323,21 +357,31 @@ def drain_pending_logs(max_batches=None):
 
 
 def sweep_synced_items_from_secondary():
-    """Use the item table as ground truth to close stale pending logs."""
+    """Use the item tables as ground truth to close stale pending logs.
+
+    Sweeps all 6 fleet collections + legacy "items" collection.
+    """
     updated = 0
     secondary = db.get_secondary()
-    cursor = secondary["items"].find(
-        {},
-        {"_id": 1, "version": 1, "last_log_index": 1},
-    )
-    for doc in cursor:
-        updated += mark_pending_logs_visible_for_item(
-            doc["_id"],
-            doc.get("version"),
-            doc.get("last_log_index"),
-        )
+    all_collections = list(config.FLEET_COLLECTIONS) + ["items"]
+    for coll in all_collections:
+        try:
+            cursor = secondary[coll].find(
+                {},
+                {"_id": 1, "version": 1, "last_log_index": 1},
+            )
+            for doc in cursor:
+                updated += mark_pending_logs_visible_for_item(
+                    doc["_id"],
+                    doc.get("version"),
+                    doc.get("last_log_index"),
+                )
+        except PyMongoError:
+            continue
     return updated
 
+
+# ── Secondary health ───────────────────────────────────────────────────────────
 
 def _set_secondary_health(reachable, checked_at, error=None, reconciled=0):
     with _health_lock:
@@ -432,7 +476,9 @@ def start_reconciler():
         _reconciler_started = True
 
 
-def insert_item(key: str, value: dict, client_id: str = "control_node"):
+# ── Generic collection CRUD (collection-agnostic core) ────────────────────────
+
+def insert_item(key: str, value: dict, client_id: str = "control_node", collection: str = "items"):
     primary = db.get_primary()
     _require_secondary_for_majority()
     operation_id, log_index = _next_op()
@@ -450,35 +496,34 @@ def insert_item(key: str, value: dict, client_id: str = "control_node"):
         "created_by": client_id,
     }
 
-    result = primary["items"].with_options(write_concern=_wc()).insert_one(doc)
+    result = primary[collection].with_options(write_concern=_wc()).insert_one(doc)
     target_id = result.inserted_id
     log_id = _write_log(_log_entry(
         operation_id, log_index, "insert", target_id, leader_write_time,
-        None, 1, client_id,
+        None, 1, client_id, collection=collection,
     ))
 
     if _is_async_write():
         return target_id, None
 
-    delay_ms = _complete_log_visibility(log_id, target_id, 1, leader_write_time)
-
+    delay_ms = _complete_log_visibility(log_id, target_id, 1, leader_write_time, collection=collection)
     return target_id, delay_ms
 
 
-def update_item(target_id, new_value: dict, client_id: str = "control_node"):
+def update_item(target_id, new_value: dict, client_id: str = "control_node", collection: str = "items"):
     primary = db.get_primary()
     _require_secondary_for_majority()
     operation_id, log_index = _next_op()
 
-    current = primary["items"].find_one({"_id": target_id})
+    current = primary[collection].find_one({"_id": target_id})
     if not current:
-        raise ValueError(f"Item not found: {target_id}")
+        raise ValueError(f"Item not found in {collection}: {target_id}")
 
     version_before = current["version"]
     version_after = version_before + 1
     leader_write_time = _now()
 
-    primary["items"].with_options(write_concern=_wc()).update_one(
+    primary[collection].with_options(write_concern=_wc()).update_one(
         {"_id": target_id},
         {"$set": {
             "value": new_value,
@@ -491,31 +536,30 @@ def update_item(target_id, new_value: dict, client_id: str = "control_node"):
     )
     log_id = _write_log(_log_entry(
         operation_id, log_index, "update", target_id, leader_write_time,
-        version_before, version_after, client_id,
+        version_before, version_after, client_id, collection=collection,
     ))
 
     if _is_async_write():
         return None
 
-    delay_ms = _complete_log_visibility(log_id, target_id, version_after, leader_write_time)
-
+    delay_ms = _complete_log_visibility(log_id, target_id, version_after, leader_write_time, collection=collection)
     return delay_ms
 
 
-def delete_item(target_id, client_id: str = "control_node"):
+def delete_item(target_id, client_id: str = "control_node", collection: str = "items"):
     primary = db.get_primary()
     _require_secondary_for_majority()
     operation_id, log_index = _next_op()
 
-    current = primary["items"].find_one({"_id": target_id})
+    current = primary[collection].find_one({"_id": target_id})
     if not current:
-        raise ValueError(f"Item not found: {target_id}")
+        raise ValueError(f"Item not found in {collection}: {target_id}")
 
     version_before = current["version"]
     version_after = version_before + 1
     leader_write_time = _now()
 
-    primary["items"].with_options(write_concern=_wc()).update_one(
+    primary[collection].with_options(write_concern=_wc()).update_one(
         {"_id": target_id},
         {"$set": {
             "deleted": True,
@@ -528,12 +572,224 @@ def delete_item(target_id, client_id: str = "control_node"):
     )
     log_id = _write_log(_log_entry(
         operation_id, log_index, "delete", target_id, leader_write_time,
-        version_before, version_after, client_id,
+        version_before, version_after, client_id, collection=collection,
     ))
 
     if _is_async_write():
         return None
 
-    delay_ms = _complete_log_visibility(log_id, target_id, version_after, leader_write_time)
-
+    delay_ms = _complete_log_visibility(log_id, target_id, version_after, leader_write_time, collection=collection)
     return delay_ms
+
+
+# ── Fleet domain insert helpers ────────────────────────────────────────────────
+# Each function builds the structured value dict and routes to the right collection.
+
+def insert_vehicle(vehicle_id, plate, vehicle_type, max_payload_kg, manufacture_year,
+                   client_id="control_node"):
+    return insert_item(
+        key=f"VHC-{vehicle_id}",
+        value={
+            "vehicle_id": vehicle_id,
+            "plate": plate,
+            "vehicle_type": vehicle_type,        # truck / van / motorcycle
+            "max_payload_kg": max_payload_kg,
+            "manufacture_year": manufacture_year,
+            "is_active": True,
+        },
+        client_id=client_id,
+        collection="vehicles",
+    )
+
+
+def insert_driver(driver_id, name, license_class, phone, assigned_vehicle_id=None,
+                  client_id="control_node"):
+    return insert_item(
+        key=f"DRV-{driver_id}",
+        value={
+            "driver_id": driver_id,
+            "name": name,
+            "license_class": license_class,      # B / C / D / E
+            "phone": phone,
+            "assigned_vehicle_id": assigned_vehicle_id,
+        },
+        client_id=client_id,
+        collection="drivers",
+    )
+
+
+def insert_depot(depot_id, name, city, lat, lng, capacity_vehicles,
+                 client_id="control_node"):
+    return insert_item(
+        key=f"DEP-{depot_id}",
+        value={
+            "depot_id": depot_id,
+            "name": name,
+            "city": city,
+            "lat": lat,
+            "lng": lng,
+            "capacity_vehicles": capacity_vehicles,
+        },
+        client_id=client_id,
+        collection="depots",
+    )
+
+
+def insert_shipment(shipment_id, origin_depot, destination_depot, customer,
+                    weight_kg, package_count, status="pending",
+                    assigned_vehicle_id=None, client_id="control_node"):
+    return insert_item(
+        key=f"SHP-{shipment_id}",
+        value={
+            "shipment_id": shipment_id,
+            "origin_depot": origin_depot,
+            "destination_depot": destination_depot,
+            "customer": customer,
+            "weight_kg": weight_kg,
+            "package_count": package_count,
+            "status": status,                    # pending / in_transit / delivered / cancelled
+            "assigned_vehicle_id": assigned_vehicle_id,
+        },
+        client_id=client_id,
+        collection="shipments",
+    )
+
+
+def insert_position(vehicle_id, lat, lng, city, district, speed_kmh,
+                    client_id="control_node"):
+    return insert_item(
+        key=f"POS-{vehicle_id}-{int(time.time() * 1000)}",
+        value={
+            "vehicle_id": vehicle_id,
+            "lat": lat,
+            "lng": lng,
+            "city": city,
+            "district": district,
+            "speed_kmh": speed_kmh,
+        },
+        client_id=client_id,
+        collection="positions",
+    )
+
+
+def insert_incident(vehicle_id, incident_type, severity, description,
+                    lat=None, lng=None, client_id="control_node"):
+    return insert_item(
+        key=f"INC-{vehicle_id}-{int(time.time() * 1000)}",
+        value={
+            "vehicle_id": vehicle_id,
+            "incident_type": incident_type,      # breakdown / accident / delay / fuel_low
+            "severity": severity,                # low / medium / high / critical
+            "description": description,
+            "lat": lat,
+            "lng": lng,
+            "resolved": False,
+        },
+        client_id=client_id,
+        collection="incidents",
+    )
+
+
+# ── Fleet access pattern queries ───────────────────────────────────────────────
+# These demonstrate the three consistency models used in the experiments.
+
+def get_fleet_overview(limit=20):
+    """All vehicles + their latest position.
+
+    Reads from SECONDARY — demonstrates Eventual Consistency.
+    Stale vehicle positions (secondary lag) are the expected observation.
+    """
+    secondary = db.get_secondary()
+    vehicles = list(
+        secondary["vehicles"].find({"deleted": False})
+        .sort("last_updated", -1)
+        .limit(limit)
+    )
+    result = []
+    for v in vehicles:
+        vid = v.get("value", {}).get("vehicle_id")
+        pos = None
+        if vid:
+            pos = secondary["positions"].find_one(
+                {"value.vehicle_id": vid, "deleted": False},
+                sort=[("last_updated", -1)],
+            )
+        result.append({"vehicle": v, "latest_position": pos})
+    return result
+
+
+def get_vehicle_history(vehicle_id, limit=10):
+    """Position history for one vehicle (sorted newest-first).
+
+    Reads from SECONDARY — demonstrates Monotonic Reads.
+    Version list from secondary must be non-decreasing.
+    """
+    secondary = db.get_secondary()
+    return list(
+        secondary["positions"].find(
+            {"value.vehicle_id": vehicle_id, "deleted": False},
+            sort=[("last_updated", -1)],
+        ).limit(limit)
+    )
+
+
+def get_current_position(vehicle_id):
+    """Latest recorded position for a vehicle.
+
+    Reads from PRIMARY — demonstrates Read-After-Write.
+    Dispatcher writes a position update, then reads immediately to confirm.
+    """
+    primary = db.get_primary()
+    return primary["positions"].find_one(
+        {"value.vehicle_id": vehicle_id, "deleted": False},
+        sort=[("last_updated", -1)],
+    )
+
+
+def get_active_shipments(limit=20):
+    """All shipments that are not yet delivered.
+
+    Reads from SECONDARY — eventual consistency is acceptable for fleet overview.
+    """
+    secondary = db.get_secondary()
+    return list(
+        secondary["shipments"].find(
+            {"value.status": {"$ne": "delivered"}, "deleted": False},
+            sort=[("last_updated", -1)],
+        ).limit(limit)
+    )
+
+
+def get_open_incidents(limit=20):
+    """All unresolved incidents ordered by severity.
+
+    Reads from PRIMARY — demonstrates Read-After-Write for safety-critical data.
+    A dispatcher who files an incident must see it immediately; reading stale
+    secondary data could hide a critical incident.
+    """
+    primary = db.get_primary()
+    severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+    incidents = list(
+        primary["incidents"].find(
+            {"value.resolved": False, "deleted": False},
+            sort=[("last_updated", -1)],
+        ).limit(limit)
+    )
+    # Sort by severity in Python (avoids a custom sort index for demo)
+    incidents.sort(key=lambda d: severity_order.get(d.get("value", {}).get("severity", "low"), 9))
+    return incidents
+
+
+def _serialize_doc(doc):
+    """Convert a MongoDB document to a JSON-serialisable dict."""
+    if doc is None:
+        return None
+    out = {}
+    for k, v in doc.items():
+        if isinstance(v, ObjectId):
+            out[k] = str(v)
+        elif hasattr(v, "isoformat"):
+            out[k] = v.isoformat()
+        else:
+            out[k] = v
+    return out
