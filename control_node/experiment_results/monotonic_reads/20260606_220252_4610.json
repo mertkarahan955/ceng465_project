@@ -1,0 +1,231 @@
+{
+  "saved_at": "2026-06-06T22:02:52.462116",
+  "experiment": "monotonic_reads",
+  "title": "Monotonic Reads",
+  "description": "Secondary'den ardışık okumalar asla önceki versiyondan düşük dönemez. w=1 ile lag görünür hale gelir.",
+  "events": [
+    {
+      "t_ms": 22.7529296875,
+      "latency_ms": 3,
+      "from": "client",
+      "to": "primary",
+      "label": "insert (pending)",
+      "type": "write"
+    },
+    {
+      "t_ms": 25.7529296875,
+      "latency_ms": 3,
+      "from": "primary",
+      "to": "client",
+      "label": "ok v1",
+      "type": "ok"
+    },
+    {
+      "t_ms": 26.7529296875,
+      "latency_ms": 28,
+      "from": "primary",
+      "to": "secondary",
+      "label": "oplog v1",
+      "type": "replicate"
+    },
+    {
+      "t_ms": 143.22998046875,
+      "latency_ms": 3,
+      "from": "client",
+      "to": "primary",
+      "label": "Update: in_transit",
+      "type": "write"
+    },
+    {
+      "t_ms": 146.22998046875,
+      "latency_ms": 3,
+      "from": "primary",
+      "to": "client",
+      "label": "ok v2",
+      "type": "ok"
+    },
+    {
+      "t_ms": 147.22998046875,
+      "latency_ms": 28,
+      "from": "primary",
+      "to": "secondary",
+      "label": "oplog v2",
+      "type": "replicate"
+    },
+    {
+      "t_ms": 179.4267578125,
+      "latency_ms": 3,
+      "from": "client",
+      "to": "primary",
+      "label": "Update: in_transit",
+      "type": "write"
+    },
+    {
+      "t_ms": 182.4267578125,
+      "latency_ms": 3,
+      "from": "primary",
+      "to": "client",
+      "label": "ok v3",
+      "type": "ok"
+    },
+    {
+      "t_ms": 183.4267578125,
+      "latency_ms": 28,
+      "from": "primary",
+      "to": "secondary",
+      "label": "oplog v3",
+      "type": "replicate"
+    },
+    {
+      "t_ms": 216.366943359375,
+      "latency_ms": 3,
+      "from": "client",
+      "to": "primary",
+      "label": "Update: delivered",
+      "type": "write"
+    },
+    {
+      "t_ms": 219.366943359375,
+      "latency_ms": 3,
+      "from": "primary",
+      "to": "client",
+      "label": "ok v4",
+      "type": "ok"
+    },
+    {
+      "t_ms": 220.366943359375,
+      "latency_ms": 28,
+      "from": "primary",
+      "to": "secondary",
+      "label": "oplog v4",
+      "type": "replicate"
+    },
+    {
+      "t_ms": 247.15087890625,
+      "latency_ms": 1.0,
+      "from": "client",
+      "to": "secondary",
+      "label": "read",
+      "type": "read"
+    },
+    {
+      "t_ms": 248.15087890625,
+      "latency_ms": 1.0,
+      "from": "secondary",
+      "to": "client",
+      "label": "v4 (delivered)",
+      "type": "fresh_response"
+    },
+    {
+      "t_ms": 329.739013671875,
+      "latency_ms": 1.0,
+      "from": "client",
+      "to": "secondary",
+      "label": "read",
+      "type": "read"
+    },
+    {
+      "t_ms": 330.739013671875,
+      "latency_ms": 1.0,
+      "from": "secondary",
+      "to": "client",
+      "label": "v4 (delivered)",
+      "type": "fresh_response"
+    },
+    {
+      "t_ms": 412.151123046875,
+      "latency_ms": 1.0,
+      "from": "client",
+      "to": "secondary",
+      "label": "read",
+      "type": "read"
+    },
+    {
+      "t_ms": 413.151123046875,
+      "latency_ms": 1.0,
+      "from": "secondary",
+      "to": "client",
+      "label": "v4 (delivered)",
+      "type": "fresh_response"
+    },
+    {
+      "t_ms": 498.73486328125,
+      "latency_ms": 1.0,
+      "from": "client",
+      "to": "secondary",
+      "label": "read",
+      "type": "read"
+    },
+    {
+      "t_ms": 499.73486328125,
+      "latency_ms": 1.0,
+      "from": "secondary",
+      "to": "client",
+      "label": "v4 (delivered)",
+      "type": "fresh_response"
+    },
+    {
+      "t_ms": 580.6669921875,
+      "latency_ms": 1.0,
+      "from": "client",
+      "to": "secondary",
+      "label": "read",
+      "type": "read"
+    },
+    {
+      "t_ms": 581.6669921875,
+      "latency_ms": 1.0,
+      "from": "secondary",
+      "to": "client",
+      "label": "v4 (delivered)",
+      "type": "fresh_response"
+    }
+  ],
+  "log": null,
+  "reads": [
+    {
+      "t_ms": 247.15087890625,
+      "t_end_ms": 248.505859375,
+      "version": 4,
+      "status": "delivered"
+    },
+    {
+      "t_ms": 329.739013671875,
+      "t_end_ms": 331.4267578125,
+      "version": 4,
+      "status": "delivered"
+    },
+    {
+      "t_ms": 412.151123046875,
+      "t_end_ms": 413.68896484375,
+      "version": 4,
+      "status": "delivered"
+    },
+    {
+      "t_ms": 498.73486328125,
+      "t_end_ms": 499.635009765625,
+      "version": 4,
+      "status": "delivered"
+    },
+    {
+      "t_ms": 580.6669921875,
+      "t_end_ms": 582.10791015625,
+      "version": 4,
+      "status": "delivered"
+    }
+  ],
+  "summary": {
+    "write_concern": "1 (async)",
+    "versions_seen": [
+      4,
+      4,
+      4,
+      4,
+      4
+    ],
+    "monotonic": true,
+    "consistency_model": "Monotonic Reads",
+    "consistency_achieved": true,
+    "final_version": 4
+  }
+}

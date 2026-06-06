@@ -1,0 +1,87 @@
+{
+  "saved_at": "2026-06-06T21:33:12.230586",
+  "experiment": "eventual_consistency",
+  "title": "Eventual Consistency (w=1)",
+  "description": "Primary hemen döner. Secondary geride kalabilir ama eninde sonunda yakalar. Stale read gözlemlenebilir.",
+  "events": [
+    {
+      "t_ms": 0,
+      "latency_ms": 15.4979248046875,
+      "from": "client",
+      "to": "primary",
+      "label": "write (w=1)",
+      "type": "write"
+    },
+    {
+      "t_ms": 15.4979248046875,
+      "latency_ms": 15.4979248046875,
+      "from": "primary",
+      "to": "client",
+      "label": "ok (31.0ms) — no wait",
+      "type": "ok"
+    },
+    {
+      "t_ms": 15.4979248046875,
+      "latency_ms": 9.309106445312501,
+      "from": "primary",
+      "to": "secondary",
+      "label": "oplog (async)",
+      "type": "replicate"
+    },
+    {
+      "t_ms": 24.80703125,
+      "latency_ms": 6.201757812499999,
+      "from": "secondary",
+      "to": "primary",
+      "label": "oplog applied",
+      "type": "ack"
+    },
+    {
+      "t_ms": 31.0087890625,
+      "latency_ms": 1.196044921875,
+      "from": "client",
+      "to": "secondary",
+      "label": "read",
+      "type": "read"
+    },
+    {
+      "t_ms": 32.204833984375,
+      "latency_ms": 1.196044921875,
+      "from": "secondary",
+      "to": "client",
+      "label": "✓ fresh (v1)",
+      "type": "fresh_response"
+    }
+  ],
+  "log": {
+    "log_index": 160,
+    "operation_id": "adb67261",
+    "version_before": null,
+    "version_after": 1,
+    "write_concern": "1",
+    "status": "pending_follower",
+    "replication_delay_ms": null,
+    "leader_write_time": "2026-06-06T18:33:12.197000",
+    "follower_visible_time": null,
+    "target_collection": "positions"
+  },
+  "reads": [
+    {
+      "t_ms": 31.0087890625,
+      "t_end_ms": 33.40087890625,
+      "found": true,
+      "version": 1,
+      "status": "v1 ✓",
+      "delay_after_write_ms": 0
+    }
+  ],
+  "summary": {
+    "write_concern": "1 (async)",
+    "write_returned_ms": 31.0,
+    "replication_delay_ms": null,
+    "consistency_model": "Eventual",
+    "stale_read_observed": false,
+    "consistency_window_ms": 31.01,
+    "consistency_achieved": true
+  }
+}

@@ -1,0 +1,103 @@
+{
+  "saved_at": "2026-06-06T21:48:38.765279",
+  "experiment": "eventual_consistency",
+  "title": "Eventual Consistency (w=1)",
+  "description": "Primary w=1 ile günceller — OK secondary beklenmeden döner. Secondary stale (eski) veriyi gösterir, sonra yakalar.",
+  "events": [
+    {
+      "t_ms": 0.001220703125,
+      "latency_ms": 0.5,
+      "from": "client",
+      "to": "secondary",
+      "label": "read (baseline)",
+      "type": "read"
+    },
+    {
+      "t_ms": 0.501220703125,
+      "latency_ms": 0.5,
+      "from": "secondary",
+      "to": "client",
+      "label": "v1 (synced)",
+      "type": "fresh_response"
+    },
+    {
+      "t_ms": 0.39892578125,
+      "latency_ms": 6.320712890625001,
+      "from": "client",
+      "to": "primary",
+      "label": "update (w=1, v1→v2)",
+      "type": "write"
+    },
+    {
+      "t_ms": 16.6521875,
+      "latency_ms": 6.320712890625001,
+      "from": "primary",
+      "to": "client",
+      "label": "ok (22.6ms) — no secondary wait",
+      "type": "ok"
+    },
+    {
+      "t_ms": 16.6521875,
+      "latency_ms": 5.0,
+      "from": "primary",
+      "to": "secondary",
+      "label": "oplog async (v2)",
+      "type": "replicate"
+    },
+    {
+      "t_ms": 21.6521875,
+      "latency_ms": 2.0,
+      "from": "secondary",
+      "to": "primary",
+      "label": "oplog applied",
+      "type": "ack"
+    },
+    {
+      "t_ms": 22.98486328125,
+      "latency_ms": 0.59912109375,
+      "from": "client",
+      "to": "secondary",
+      "label": "read",
+      "type": "read"
+    },
+    {
+      "t_ms": 23.583984375,
+      "latency_ms": 0.59912109375,
+      "from": "secondary",
+      "to": "client",
+      "label": "✓ fresh (v2)",
+      "type": "fresh_response"
+    }
+  ],
+  "log": {
+    "log_index": 181,
+    "operation_id": "551247bb",
+    "version_before": null,
+    "version_after": 1,
+    "write_concern": "majority",
+    "status": "visible_on_follower",
+    "replication_delay_ms": 26.734,
+    "leader_write_time": "2026-06-06T18:48:38.691000",
+    "follower_visible_time": "2026-06-06T18:48:38.718000",
+    "target_collection": "positions"
+  },
+  "reads": [
+    {
+      "t_ms": 22.98486328125,
+      "t_end_ms": 24.18310546875,
+      "found": true,
+      "version": 2,
+      "stale_after_write": false,
+      "status": "v2"
+    }
+  ],
+  "summary": {
+    "write_concern": "1 (async)",
+    "write_returned_ms": 22.57,
+    "replication_delay_ms": 26.73,
+    "consistency_model": "Eventual",
+    "stale_read_observed": false,
+    "consistency_window_ms": 22.98,
+    "consistency_achieved": true
+  }
+}

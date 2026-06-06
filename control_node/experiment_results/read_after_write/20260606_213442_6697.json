@@ -1,0 +1,85 @@
+{
+  "saved_at": "2026-06-06T21:34:42.670092",
+  "experiment": "read_after_write",
+  "title": "Read-After-Write Consistency (w=1, async)",
+  "description": "w=1 ile yazılır — primary'den her zaman taze okunur. Secondary w=1 nedeniyle geride kalabilir.",
+  "events": [
+    {
+      "t_ms": 0,
+      "latency_ms": 50.6695556640625,
+      "from": "client",
+      "to": "primary",
+      "label": "write incident (w=1)",
+      "type": "write"
+    },
+    {
+      "t_ms": 50.6695556640625,
+      "latency_ms": 50.6695556640625,
+      "from": "primary",
+      "to": "client",
+      "label": "ok (101.3ms) — immediately",
+      "type": "ok"
+    },
+    {
+      "t_ms": 50.6695556640625,
+      "latency_ms": 30,
+      "from": "primary",
+      "to": "secondary",
+      "label": "oplog (async)",
+      "type": "replicate"
+    },
+    {
+      "t_ms": 101.340087890625,
+      "latency_ms": 7.4730224609375,
+      "from": "client",
+      "to": "primary",
+      "label": "read — RAW path (primary)",
+      "type": "read"
+    },
+    {
+      "t_ms": 108.8131103515625,
+      "latency_ms": 7.4730224609375,
+      "from": "primary",
+      "to": "client",
+      "label": "✓ fresh (14.9ms) — always",
+      "type": "fresh_response"
+    },
+    {
+      "t_ms": 128.2021484375,
+      "latency_ms": 1.0,
+      "from": "client",
+      "to": "secondary",
+      "label": "read — secondary (comparison)",
+      "type": "read"
+    },
+    {
+      "t_ms": 129.2021484375,
+      "latency_ms": 1.0,
+      "from": "secondary",
+      "to": "client",
+      "label": "✓ fresh (1.0ms)",
+      "type": "fresh_response"
+    }
+  ],
+  "log": {
+    "log_index": 162,
+    "operation_id": "836b7262",
+    "version_before": null,
+    "version_after": 1,
+    "write_concern": "1",
+    "status": "visible_on_follower",
+    "replication_delay_ms": -32.411,
+    "leader_write_time": "2026-06-06T18:34:42.527000",
+    "follower_visible_time": "2026-06-06T18:34:42.494000",
+    "target_collection": "incidents"
+  },
+  "summary": {
+    "write_concern": "1 (async)",
+    "write_returned_ms": 101.34,
+    "primary_read_ms": 14.95,
+    "primary_fresh": true,
+    "secondary_fresh": true,
+    "consistency_model": "Read-After-Write",
+    "consistency_achieved": true
+  }
+}

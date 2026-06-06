@@ -665,7 +665,10 @@ function renderResult(result, fromHistory) {
       <pre class="log-pre">${escHtml(JSON.stringify(log, null, 2))}</pre>
     </details>` : '';
 
-  const readsHtml = reads ? buildReadsTable(reads) : '';
+  const readsTitle = result.experiment === 'eventual_consistency'
+    ? '📡 Secondary Read Sequence (Eventual Convergence)'
+    : '🔢 Secondary Read Sequence (Monotonic Check)';
+  const readsHtml = reads ? buildReadsTable(reads, readsTitle) : '';
 
   main.innerHTML = `
     <div class="result-panel">
@@ -764,23 +767,80 @@ function buildStatRows(s) {
 }
 
 /* ── Monotonic reads table ────────────────────────────────────── */
-function buildReadsTable(reads) {
-  const rows = reads.map((r, i) => `
-    <tr>
-      <td style="color:var(--muted)">#${i+1}</td>
-      <td>${r.t_ms.toFixed(1)} ms</td>
-      <td style="color:var(--purple)">${r.version != null ? 'v' + r.version : '<span style="color:var(--red)">—</span>'}</td>
-      <td>${r.status || '—'}</td>
-    </tr>`).join('');
+function buildReadsTable(reads, title) {
+  title = title || '🔢 Secondary Read Sequence';
+
+  // Detect if this is an eventual-consistency table (has "found" field)
+  const isEC = reads.length > 0 && 'found' in reads[0];
+
+  const rows = reads.map((r, i) => {
+    if (isEC) {
+      const isStale  = r.stale_after_write;
+      const isFresh  = r.version === 2;  // TARGET_VERSION
+      const isPreUpd = !isStale && !isFresh;
+
+      const resultColor = isStale  ? 'var(--red)'
+                        : isFresh  ? 'var(--green)'
+                        : 'var(--muted)';
+      const resultLabel = isStale  ? '⚡ stale (old version)'
+                        : isFresh  ? '✓ fresh (latest)'
+                        : 'pre-update (current)';
+
+      const versionCell = r.version != null
+        ? `<span style="color:${resultColor};font-family:monospace">v${r.version}</span>`
+        : `<span style="color:var(--muted)">—</span>`;
+
+      const rtt = ((r.t_end_ms || r.t_ms) - r.t_ms).toFixed(1);
+
+      // Row background highlight for stale reads
+      const rowStyle = isStale ? 'background:rgba(248,81,73,.05)' : '';
+
+      return `<tr style="${rowStyle}">
+        <td style="color:var(--muted)">#${i+1}</td>
+        <td style="font-family:monospace">${r.t_ms.toFixed(1)} ms</td>
+        <td>${versionCell}</td>
+        <td style="font-family:monospace;color:var(--muted)">${rtt} ms</td>
+        <td style="color:${resultColor};font-weight:${isStale||isFresh?'700':'400'}">${resultLabel}</td>
+      </tr>`;
+    } else {
+      // Monotonic reads
+      return `<tr>
+        <td style="color:var(--muted)">#${i+1}</td>
+        <td style="font-family:monospace">${r.t_ms.toFixed(1)} ms</td>
+        <td style="color:var(--purple);font-family:monospace">${r.version != null ? 'v' + r.version : '<span style="color:var(--red)">—</span>'}</td>
+        <td>${r.status || '—'}</td>
+      </tr>`;
+    }
+  }).join('');
+
+  const headers = isEC
+    ? '<th>#</th><th>Time (ms)</th><th>Version seen</th><th>Read RTT</th><th>Result</th>'
+    : '<th>#</th><th>Time</th><th>Version</th><th>Status</th>';
+
+  // Summary row for EC
+  let summaryHtml = '';
+  if (isEC) {
+    const staleCount = reads.filter(r => !r.found).length;
+    const freshCount = reads.filter(r =>  r.found).length;
+    const firstFresh = reads.find(r => r.found);
+    summaryHtml = `
+      <div style="padding:10px 14px;display:flex;gap:20px;align-items:center;
+                  border-top:1px solid var(--border);background:var(--bg3);font-size:11px">
+        <span>Stale reads: <strong style="color:var(--red)">${staleCount}</strong></span>
+        <span>Fresh reads: <strong style="color:var(--green)">${freshCount}</strong></span>
+        ${firstFresh ? `<span>Secondary synced at: <strong style="color:var(--blue);font-family:monospace">${firstFresh.t_ms.toFixed(1)} ms</strong></span>` : ''}
+      </div>`;
+  }
 
   return `
     <div class="panel-box">
-      <div class="panel-header">🔢 Secondary Read Sequence (Monotonic Check)</div>
+      <div class="panel-header">${escHtml(title)}</div>
       <div class="panel-body">
         <table class="event-table">
-          <thead><tr><th>#</th><th>Time</th><th>Version</th><th>Status</th></tr></thead>
+          <thead><tr>${headers}</tr></thead>
           <tbody>${rows}</tbody>
         </table>
+        ${summaryHtml}
       </div>
     </div>`;
 }

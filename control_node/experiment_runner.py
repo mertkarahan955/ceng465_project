@@ -170,77 +170,168 @@ def _run_sync_replication():
 # ── Experiment 2: Eventual Consistency (w=1) ──────────────────────────────────
 
 def _run_eventual_consistency():
-    """w=1: Primary hemen döner, secondary async olarak güncellenir."""
-    operations.set_write_concern(1)
+    """Eventual consistency demonstrasyonu:
+
+    1. w=majority ile v1 insert → secondary sync bekle (baseline).
+    2. Secondary'den 1 baseline read (v1 görünmeli).
+    3. w=1 ile v2 update → OK hemen döner (no secondary wait).
+    4. Birden fazla secondary read → stale (v1) → ... → fresh (v2).
+    """
+    # ── Phase 1: Establish v1 on both nodes ───────────────────────
+    operations.set_write_concern("majority")
+    item_id, _ = operations.insert_position(
+        "EC-BASE", 39.9334, 32.8597, "Ankara", "Cankaya", 80
+    )
+    # Wait until secondary has confirmed v1
+    for _ in range(100):
+        sec = db.get_secondary()["positions"].find_one({"_id": item_id})
+        if sec and sec.get("version") == 1:
+            break
+        time.sleep(0.015)
 
     t0 = _ms()
-    item_id, _ = operations.insert_position(
-        "EC-EXP", 39.9334, 32.8597, "Ankara", "Cankaya", 80
-    )
-    t1 = _ms()
-    write_returned_ms = t1 - t0  # ~2-5ms fire-and-forget
 
-    # Immediate stale read from secondary
-    t_r1 = _ms() - t0
-    sec_doc_now = db.get_secondary()["positions"].find_one({"_id": item_id})
-    t_r1_end = _ms() - t0
-    stale = sec_doc_now is None
+    # ── Phase 2: One baseline read from secondary (shows v1) ───────
+    t_b = _ms() - t0
+    baseline_doc = db.get_secondary()["positions"].find_one({"_id": item_id})
+    t_b_end = _ms() - t0
+    baseline_version = baseline_doc.get("version") if baseline_doc else None
 
-    # Wait for eventual consistency
-    synced_ms = None
-    deadline = time.time() + 5.0
-    while time.time() < deadline:
-        doc = db.get_secondary()["positions"].find_one({"_id": item_id})
-        if doc:
-            synced_ms = _ms() - t0
-            break
-        time.sleep(0.01)
-
-    log = _get_log(item_id)
-    repl_ms = log.get("replication_delay_ms") if log else synced_ms
+    # ── Phase 3: w=1 update → v2 (no secondary wait) ──────────────
+    operations.set_write_concern(1)
+    write_start_ms = _ms() - t0
+    operations.update_item(item_id, {
+        "vehicle_id": "EC-BASE",
+        "lat": 41.0082, "lng": 28.9784,
+        "city": "Istanbul", "district": "Besiktas",
+        "speed_kmh": 90,
+    }, collection="positions")
+    write_returned_ms = _ms() - t0
     operations.set_write_concern("majority")
 
-    sync_t = synced_ms or (write_returned_ms + 100)
-    oplog_arrive = sync_t * 0.75  # when oplog reaches secondary
+    # ── Phase 4: Multiple secondary reads at increasing intervals ──
+    TARGET = 2
+    reads = []
+    for delay_ms in [0, 10, 20, 40, 80, 160, 320, 640]:
+        target_abs = t0 + write_returned_ms + delay_ms
+        sleep_s = (target_abs - _ms()) / 1000
+        if sleep_s > 0:
+            time.sleep(sleep_s)
+
+        t_r = _ms() - t0
+        doc = db.get_secondary()["positions"].find_one({"_id": item_id})
+        t_r_end = _ms() - t0
+
+        version = doc.get("version") if doc else None
+        is_stale = (version != TARGET)
+        reads.append({
+            "t_ms":             t_r,
+            "t_end_ms":         t_r_end,
+            "found":            doc is not None,
+            "version":          version,
+            "stale_after_write": is_stale,
+            "status":           f"v{version}" if version else "—",
+        })
+        if not is_stale:
+            break  # secondary caught up
+
+    stale_observed = any(r["stale_after_write"] for r in reads)
+    first_fresh    = next((r for r in reads if not r["stale_after_write"]), None)
+    synced_ms      = first_fresh["t_ms"] if first_fresh else None
+
+    log     = _get_log(item_id)
+    repl_ms = log.get("replication_delay_ms") if log else synced_ms
+
+    # ── Build timeline events — sadece gerçek ölçülen değerler ───────
+    update_duration = write_returned_ms - write_start_ms
+
+    # Yarı-RTT: Python'un gönderim ve alım zamanları arasındaki gerçek farkın yarısı.
+    # Bu tek varsayım; bunun dışında hiçbir şey uydurulmaz.
+    half_write = max(update_duration / 2, 1.0)
+
+    # Oplog gecikmesi için en iyi kaynak: operation_logs'taki repl_ms.
+    # Bu değer MongoDB'nin kendi server-side timestamp'larından hesaplanır:
+    #   replication_delay_ms = follower_visible_time - leader_write_time
+    # Yoksa Python'un secondary'de v2 gördüğü anı (synced_ms) kullan.
+    primary_commit_ms = write_start_ms + half_write
+    if repl_ms:
+        oplog_arrive = primary_commit_ms + repl_ms
+    elif synced_ms:
+        oplog_arrive = synced_ms
+    else:
+        oplog_arrive = write_returned_ms + 50
+
+    # Baseline read half-RTT (gerçek ölçüm)
+    half_b = max((t_b_end - t_b) / 2, 0.5)
 
     events = [
-        # Client writes (w=1)
-        {"t_ms": 0,                  "latency_ms": 3,                       "from": "client",    "to": "primary",   "label": "write (w=1)",                              "type": "write"},
-        # Primary returns ok immediately (no waiting for secondary)
-        {"t_ms": write_returned_ms,  "latency_ms": 3,                       "from": "primary",   "to": "client",    "label": f"ok ({write_returned_ms:.1f}ms) — immediately", "type": "ok"},
-        # Primary sends oplog async
-        {"t_ms": 3,                  "latency_ms": oplog_arrive - 3,        "from": "primary",   "to": "secondary", "label": "oplog (async)",                            "type": "replicate"},
+        # 1. Baseline: update'ten önce secondary'den 1 read
+        #    t_b          → Python isteği gönderdi
+        #    t_b + half_b → secondary aldı ve yanıtladı
+        #    t_b_end      → Python yanıtı aldı
+        {"t_ms": t_b,
+         "latency_ms": half_b,
+         "from": "client", "to": "secondary",
+         "label": "read (baseline)", "type": "read"},
+        {"t_ms": t_b + half_b,
+         "latency_ms": half_b,
+         "from": "secondary", "to": "client",
+         "label": f"v{baseline_version} (synced)", "type": "fresh_response"},
+
+        # 2. w=1 update
+        #    write_start_ms           → Python isteği gönderdi
+        #    write_start_ms+half_write → primary aldı
+        #    write_returned_ms-half_write → primary OK gönderdi (secondary beklemedi)
+        #    write_returned_ms        → Python OK aldı
+        {"t_ms": write_start_ms,
+         "latency_ms": half_write,
+         "from": "client", "to": "primary",
+         "label": "update (w=1, v1→v2)", "type": "write"},
+        {"t_ms": write_returned_ms - half_write,
+         "latency_ms": half_write,
+         "from": "primary", "to": "client",
+         "label": f"ok ({update_duration:.1f}ms) — no secondary wait", "type": "ok"},
+
+        # 3. Oplog async
+        #    primary_commit_ms → primary commit etti, oplog'u gönderdi
+        #    oplog_arrive      → secondary aldı (repl_ms veya synced_ms ile ölçüldü)
+        {"t_ms": primary_commit_ms,
+         "latency_ms": max(oplog_arrive - primary_commit_ms, 2),
+         "from": "primary", "to": "secondary",
+         "label": f"oplog async — {max(oplog_arrive - primary_commit_ms, 0):.1f}ms",
+         "type": "replicate"},
     ]
 
-    # Stale read immediately after write
-    if stale:
-        rtt_r1 = t_r1_end - t_r1
-        half_r1 = max(rtt_r1 / 2, 1.0)
-        events += [
-            {"t_ms": t_r1,           "latency_ms": half_r1, "from": "client",    "to": "secondary", "label": "read (fleet overview)",  "type": "read"},
-            {"t_ms": t_r1 + half_r1, "latency_ms": half_r1, "from": "secondary", "to": "client",    "label": "⚡ stale! (not synced)", "type": "stale_response"},
-        ]
+    # ── Post-update secondary reads ────────────────────────────────
+    for r in reads:
+        half_r = max((r["t_end_ms"] - r["t_ms"]) / 2, 0.5)
+        if r["stale_after_write"]:
+            resp_label = f"⚡ stale (v{r['version']} — old)"
+            resp_type  = "stale_response"
+        else:
+            resp_label = f"✓ fresh (v{r['version']})"
+            resp_type  = "fresh_response"
 
-    # Secondary catches up, fresh read
-    if synced_ms:
-        events += [
-            {"t_ms": oplog_arrive,   "latency_ms": 3,   "from": "secondary", "to": "primary",   "label": "oplog applied",                             "type": "ack"},
-            {"t_ms": sync_t + 5,     "latency_ms": 3,   "from": "client",    "to": "secondary", "label": "read again",                                "type": "read"},
-            {"t_ms": sync_t + 9,     "latency_ms": 3,   "from": "secondary", "to": "client",    "label": f"✓ fresh ({(repl_ms or sync_t):.1f}ms total)", "type": "fresh_response"},
-        ]
+        events.append({"t_ms": r["t_ms"],          "latency_ms": half_r,
+                        "from": "client",    "to": "secondary",
+                        "label": "read",              "type": "read"})
+        events.append({"t_ms": r["t_ms"] + half_r, "latency_ms": half_r,
+                        "from": "secondary", "to": "client",
+                        "label": resp_label,           "type": resp_type})
 
     return {
         "experiment":  "eventual_consistency",
         "title":       "Eventual Consistency (w=1)",
-        "description": "Primary hemen döner. Secondary geride kalabilir ama eninde sonunda yakalar. Stale read gözlemlenebilir.",
+        "description": "Primary w=1 ile günceller — OK secondary beklenmeden döner. Secondary stale (eski) veriyi gösterir, sonra yakalar.",
         "events":      events,
         "log":         _serialize_log(log),
+        "reads":       reads,
         "summary": {
             "write_concern":         "1 (async)",
-            "write_returned_ms":     round(write_returned_ms, 2),
+            "write_returned_ms":     round(update_duration, 2),
             "replication_delay_ms":  round(repl_ms, 2) if repl_ms else None,
             "consistency_model":     "Eventual",
-            "stale_read_observed":   stale,
+            "stale_read_observed":   stale_observed,
             "consistency_window_ms": round(synced_ms, 2) if synced_ms else None,
             "consistency_achieved":  synced_ms is not None,
         },
