@@ -1,0 +1,66 @@
+\relax 
+\providecommand \babel@aux [2]{\global \let \babel@toc \@gobbletwo }
+\@nameuse{bbl@beforestart}
+\providecommand\hyper@newdestlabel[2]{}
+\providecommand\HyField@AuxAddToFields[1]{}
+\providecommand\HyField@AuxAddToCoFields[2]{}
+\babel@aux{english}{}
+\@writefile{toc}{\contentsline {section}{\numberline {1}Introduction}{2}{section.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {2}System Architecture}{2}{section.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}Physical Topology}{2}{subsection.2.1}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Physical node inventory}}{2}{table.caption.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Architectural Diagram}{3}{subsection.2.2}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Physical deployment topology. Dashed arrows are conditional or health-check paths.}}{3}{figure.caption.2}\protected@file@percent }
+\providecommand*\caption@xref[2]{\@setref\relax\@undefined{#1}}
+\newlabel{fig:topology}{{1}{3}{Physical deployment topology. Dashed arrows are conditional or health-check paths}{figure.caption.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.3}Replica Set Configuration}{3}{subsection.2.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3}Schema Design}{3}{section.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Document Envelope}{3}{subsection.3.1}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Common document envelope (all fleet collections)}}{4}{table.caption.3}\protected@file@percent }
+\newlabel{tab:envelope}{{2}{4}{Common document envelope (all fleet collections)}{table.caption.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Fleet Collections}{4}{subsection.3.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Fleet collections: schema, consistency model, and read routing}}{4}{table.caption.4}\protected@file@percent }
+\newlabel{tab:collections}{{3}{4}{Fleet collections: schema, consistency model, and read routing}{table.caption.4}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {4}Logging Mechanism}{5}{section.4}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces \texttt  {operation\_logs} document schema}}{5}{table.caption.5}\protected@file@percent }
+\newlabel{tab:oplog}{{4}{5}{\texttt {operation\_logs} document schema}{table.caption.5}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {5}Experiments}{5}{section.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Experiment 1 --- Synchronous Replication}{5}{subsection.5.1}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces Synchronous Replication --- representative run}}{6}{table.caption.6}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Timeline: Synchronous Replication --- wide processing band on PRIMARY, SECONDARY ACK before client ok}}{6}{figure.caption.7}\protected@file@percent }
+\newlabel{fig:exp-sync}{{2}{6}{Timeline: Synchronous Replication --- wide processing band on PRIMARY, SECONDARY ACK before client ok}{figure.caption.7}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.2}Experiment 2 --- Eventual Consistency (Asynchronous + Artificial Delay)}{6}{subsection.5.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {6}{\ignorespaces Eventual Consistency --- representative run}}{7}{table.caption.8}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Timeline: Eventual Consistency --- stale reads (red) at 330\,ms and 680\,ms, consistent read (green) at 1281\,ms}}{7}{figure.caption.9}\protected@file@percent }
+\newlabel{fig:exp-eventual}{{3}{7}{Timeline: Eventual Consistency --- stale reads (red) at 330\,ms and 680\,ms, consistent read (green) at 1281\,ms}{figure.caption.9}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.3}Experiment 3 --- Read-After-Write}{7}{subsection.5.3}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {7}{\ignorespaces Read-After-Write --- representative run}}{7}{table.caption.10}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Timeline: Read-After-Write --- PRIMARY read (green, 1.11\,ms, always fresh); SECONDARY read potentially stale before oplog arrives}}{8}{figure.caption.11}\protected@file@percent }
+\newlabel{fig:exp-raw}{{4}{8}{Timeline: Read-After-Write --- PRIMARY read (green, 1.11\,ms, always fresh); SECONDARY read potentially stale before oplog arrives}{figure.caption.11}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.4}Experiment 4 --- Monotonic Reads}{8}{subsection.5.4}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {8}{\ignorespaces Monotonic Reads --- representative run}}{8}{table.caption.12}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces Timeline: Monotonic Reads --- 5 writes v1-v5 on PRIMARY, 5 sequential SECONDARY reads returning non-decreasing versions}}{9}{figure.caption.13}\protected@file@percent }
+\newlabel{fig:exp-monotonic}{{5}{9}{Timeline: Monotonic Reads --- 5 writes v1-v5 on PRIMARY, 5 sequential SECONDARY reads returning non-decreasing versions}{figure.caption.13}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.5}Experiment 5 --- Concurrent Writes: Propagation Order}{9}{subsection.5.5}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {9}{\ignorespaces Concurrent Writes --- representative run}}{9}{table.caption.14}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces Timeline: Concurrent Writes --- User A and B fire 6 simultaneous inserts; PRIMARY assigns log\_index 696-701; all 6 visible on SECONDARY in correct order}}{10}{figure.caption.15}\protected@file@percent }
+\newlabel{fig:exp-concurrent}{{6}{10}{Timeline: Concurrent Writes --- User A and B fire 6 simultaneous inserts; PRIMARY assigns log\_index 696-701; all 6 visible on SECONDARY in correct order}{figure.caption.15}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.6}Experiment Summary}{10}{subsection.5.6}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {10}{\ignorespaces All five experiments at a glance}}{10}{table.caption.16}\protected@file@percent }
+\newlabel{tab:summary}{{10}{10}{All five experiments at a glance}{table.caption.16}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {6}Testing}{10}{section.6}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {11}{\ignorespaces Automated test suite}}{11}{table.caption.17}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {7}{\ignorespaces Terminal output of test\_replication.py --- all 7 tests PASS}}{11}{figure.caption.18}\protected@file@percent }
+\newlabel{fig:test-output}{{7}{11}{Terminal output of test\_replication.py --- all 7 tests PASS}{figure.caption.18}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.1}Manual Secondary Failure Test}{11}{subsection.6.1}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {8}{\ignorespaces Secondary failure and recovery sequence.}}{12}{figure.caption.19}\protected@file@percent }
+\newlabel{fig:failure-sequence}{{8}{12}{Secondary failure and recovery sequence}{figure.caption.19}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {7}Performance Measurements}{12}{section.7}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {12}{\ignorespaces Measured network and replication latencies (LAN)}}{12}{table.caption.20}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {8}Discussion}{12}{section.8}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {9}Conclusion}{13}{section.9}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {A}Repository Structure}{13}{appendix.A}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {13}{\ignorespaces Key source files}}{13}{table.caption.21}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {B}Configuration Constants}{14}{appendix.B}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {14}{\ignorespaces Key constants from \texttt  {config.py}}}{14}{table.caption.22}\protected@file@percent }
+\gdef \@abspage@last{15}

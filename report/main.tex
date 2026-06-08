@@ -14,16 +14,14 @@
 \usepackage{tabularx}
 \usepackage{longtable}
 \usepackage{array}
-\usepackage{multirow}
 \usepackage{xcolor}
-\usepackage{listings}
 \usepackage{hyperref}
 \usepackage{parskip}
-\usepackage{enumitem}
 \usepackage{fancyhdr}
 \usepackage{titlesec}
 \usepackage{caption}
 \usepackage{amsmath}
+\usepackage{amssymb}
 \usepackage{tikz}
 \usetikzlibrary{positioning, arrows.meta, shapes.geometric}
 
@@ -36,29 +34,11 @@
 \definecolor{primarycolor}{RGB}{63,185,80}
 \definecolor{secondarycolor}{RGB}{88,166,255}
 
-% ── Listings (code) ─────────────────────────────────────────────────────────────
-\lstset{
-  basicstyle=\ttfamily\footnotesize,
-  backgroundcolor=\color{codebg},
-  keywordstyle=\color{keywordblue}\bfseries,
-  stringstyle=\color{stringorange},
-  commentstyle=\color{commentgreen}\itshape,
-  numberstyle=\tiny\color{gray},
-  numbers=left,
-  numbersep=8pt,
-  frame=single,
-  rulecolor=\color{gray!40},
-  breaklines=true,
-  showstringspaces=false,
-  captionpos=b,
-  tabsize=4,
-}
-
 % ── Headers / Footers ───────────────────────────────────────────────────────────
 \pagestyle{fancy}
 \fancyhf{}
 \rhead{\small CENG465 --- Spring 2026}
-\lhead{\small Single-Leader Replication: MongoDB Fleet Management Demo}
+\lhead{\small Single-Leader Replication: MongoDB Fleet Management}
 \cfoot{\thepage}
 \renewcommand{\headrulewidth}{0.4pt}
 
@@ -79,11 +59,10 @@
 \newcommand{\code}[1]{\texttt{\small #1}}
 \newcommand{\primary}{\textcolor{primarycolor}{\textbf{PRIMARY}}}
 \newcommand{\secondary}{\textcolor{secondarycolor}{\textbf{SECONDARY}}}
-\newcommand{\wmajority}{\code{w=majority}}
-\newcommand{\wone}{\code{w=1}}
+\newcommand{\wmajority}{synchronous replication}
+\newcommand{\wone}{asynchronous replication}
 
 % ── Placeholder figure command ──────────────────────────────────────────────────
-% Usage: \placeholder{width}{height}{Caption text}{label}
 \newcommand{\placeholder}[4]{%
   \begin{figure}[H]
     \centering
@@ -104,7 +83,7 @@
   \centering
   \vspace*{1.5cm}
 
-  {\Large\textbf{Middle East Technical University}\\[0.3em]
+  {\Large\textbf{İzmir Institute of Technology}\\[0.3em]
   Department of Computer Engineering}
 
   \vspace{1cm}
@@ -121,9 +100,8 @@
 
   \vspace{1.5cm}
   \begin{tabular}{ll}
-    \textbf{Group:}   & Gxx \\[0.4em]
-    \textbf{Members:} & Mert Karahan \\
-                      & Do\u{g}ukan Top\c{c}u \\[0.4em]
+    \textbf{Members:} & Mert Karahan \quad \texttt{300201050} \\[0.4em]
+                      & Do\u{g}ukan Top\c{c}u \quad \texttt{290201036} \\[0.4em]
     \textbf{Date:}    & June 2026 \\
   \end{tabular}
 
@@ -132,13 +110,12 @@
     \node[draw=mongogreen, rounded corners, fill=mongogreen!10,
           minimum width=8cm, minimum height=1.2cm, align=center, font=\small] {
       \textbf{Machines:}\quad
-      PRIMARY \texttt{192.168.88.30}\quad|\quad
-      SECONDARY \texttt{192.168.88.70}
+      PRIMARY \quad|\quad
+      SECONDARY
     };
   \end{tikzpicture}
 \end{titlepage}
 
-% ── Table of Contents ────────────────────────────────────────────────────────────
 \tableofcontents
 \newpage
 
@@ -146,28 +123,27 @@
 \section{Introduction}
 % ═══════════════════════════════════════════════════════════════════════════════════
 
-This project implements and demonstrates \textit{single-leader replication} on two
-physical macOS machines over a LAN, using MongoDB as the storage engine and a Python/Flask
-control node as the client layer. The motivation is drawn directly from Chapter 5 of
-\textit{Designing Data-Intensive Applications} (DDIA) by Kleppmann: replication is the
-foundation of fault tolerance, read scalability, and latency reduction, but it introduces
-consistency anomalies that must be explicitly handled at the application layer.
+This project implements single-leader replication on two physical macOS machines over a
+LAN, using MongoDB as the storage engine and a Python/Flask control node as the client.
+Every write is tracked from the moment PRIMARY commits it to the moment SECONDARY applies
+it, with the replication delay recorded in an application-level operation log.
 
-\subsection{Objectives}
+The domain is a \textit{fleet management system} with six collections: vehicles, drivers,
+depots, shipments, GPS positions, and incidents. Each collection has a different write
+frequency and consistency requirement, making the domain a natural fit for demonstrating
+multiple consistency models with realistic data shapes.
 
-\begin{enumerate}[leftmargin=2em]
-  \item Deploy a two-node MongoDB replica set (\code{rs0}) on real hardware — no containers,
-        no simulated latency.
-  \item Implement observable write operations: every mutation records \code{leader\_write\_time},
-        \code{follower\_visible\_time}, and \code{replication\_delay\_ms} in an application-level
-        operation log, mirroring Raft's write-ahead log (WAL) concept.
-  \item Demonstrate and measure two write concern modes: \wmajority\ (synchronous, consistency-first)
-        and \wone\ (asynchronous, availability-first).
-  \item Implement a fleet management domain (vehicles, drivers, depots, shipments, GPS positions,
-        incidents) where each collection exhibits a different consistency requirement.
-  \item Visualise three DDIA consistency guarantees — \textit{Synchronous Replication},
-        \textit{Read-After-Write}, and \textit{Monotonic Reads} — as interactive DDIA-style
-        timeline diagrams on the experiment dashboard.
+The main goals of the project are:
+
+\begin{enumerate}
+  \item Deploy a two-node MongoDB replica set (\code{rs0}) on real hardware with no
+        containers or simulated latency.
+  \item Implement two replication modes --- synchronous (PRIMARY waits for SECONDARY ACK)
+        and asynchronous (PRIMARY returns immediately) --- with a measurable operation log
+        that records \code{leader\_write\_time}, \code{follower\_visible\_time}, and
+        \code{replication\_delay\_ms} per write.
+  \item Demonstrate five consistency scenarios via interactive DDIA-style timeline
+        diagrams on an experiment dashboard.
 \end{enumerate}
 
 % ═══════════════════════════════════════════════════════════════════════════════════
@@ -216,260 +192,334 @@ round-trip times.
   \draw[arr, color=mongogreen]
     (prim) -- node[above, font=\tiny]{oplog replication (async)} (sec);
   \draw[arr, color=orange]
-    (ctrl) -- node[left, font=\tiny]{writes (w=majority / w=1)} (prim);
+    (ctrl) -- node[left, font=\tiny]{writes (sync / async)} (prim);
   \draw[arr, color=secondarycolor, dashed]
     (ctrl.east) to[bend right=20]
     node[right, font=\tiny]{directConnection reads / health ping} (sec.south);
   \draw[arr, dashed, color=gray]
     (prim.south) to[bend left=10]
-    node[right, font=\tiny]{majority ACK\\(w=majority only)} (ctrl.north);
+    node[right, font=\tiny, align=left]{sync ACK\\(synchronous only)} (ctrl.north);
 \end{tikzpicture}
-\caption{Physical deployment topology. Arrows show the direction of data flow.
-         Dashed arrows are conditional or health-check paths.}
+\caption{Physical deployment topology. Dashed arrows are conditional or health-check paths.}
 \label{fig:topology}
 \end{figure}
 
 \subsection{Replica Set Configuration}
 
-\subsubsection{Non-Voting Secondary}
+The secondary is configured as a non-voting, zero-priority member (\code{votes=0},
+\code{priority=0}). This keeps the primary always writable regardless of secondary
+availability, at the cost of disabling automatic failover. The trade-off is acceptable
+for a two-node demo environment where observing replication behaviour is the goal.
 
-A two-node replica set with equal voting rights (\code{votes=1} each) has a critical
-failure mode: when the secondary goes offline, majority is lost and the primary
-transitions to \textit{read-only} state — even \wone\ writes are rejected because there
-is no writable primary. To avoid this, the secondary is configured as a non-voting,
-zero-priority member:
+The system supports two replication modes controlled via MongoDB's write concern
+parameter: \textbf{synchronous replication} (\code{w=majority}), where PRIMARY waits
+for SECONDARY to acknowledge before returning success, and \textbf{asynchronous
+replication} (\code{w=1}), where PRIMARY returns immediately after its own write without
+waiting for the secondary. For synchronous writes, the application pings the secondary
+\textit{before} issuing the primary mutation. If the secondary is unreachable, the write
+is rejected immediately with a clear error instead of blocking until the MongoDB
+wire-level timeout fires.
 
-\begin{lstlisting}[language={}, caption={Replica set reconfiguration at MongoDB shell}]
-cfg = rs.conf()
-cfg.members[1].priority = 0
-cfg.members[1].votes    = 0
-rs.reconfig(cfg)
-\end{lstlisting}
-
-With this configuration the primary always remains writable regardless of secondary
-availability. The trade-off is that automatic failover is disabled: if the primary dies,
-no election occurs. This is acceptable for a two-node demo environment.
-
-\subsubsection{Application-Level Write Guard for \wmajority}
-
-Because MongoDB's built-in \wmajority\ already requires the secondary to acknowledge,
-it will block indefinitely when the secondary is unreachable. To give fast, deterministic
-feedback, the application checks secondary reachability \textit{before} issuing the
-primary mutation:
-
-\begin{lstlisting}[language=Python, caption={Pre-write secondary reachability guard (operations.py)}]
-def _require_secondary_for_majority():
-    if _is_async_write():        # w=1 bypasses this guard
-        return
-    try:
-        db.get_secondary().command("ping")
-    except PyMongoError as exc:
-        _set_secondary_health(False, _now(), error=exc)
-        raise RuntimeError(
-            "w=majority requires secondary to be reachable; "
-            "write rejected before primary mutation"
-        )
-\end{lstlisting}
-
-\subsection{Background Threads}
-
-Two daemon threads run for the lifetime of the Flask process:
-
-\begin{description}[leftmargin=2em]
-  \item[\texttt{replication-log-reconciler}] Fires every \code{RECONCILE\_INTERVAL\_MS=1000ms}.
-    Scans \code{operation\_logs} for \code{pending\_follower} entries and checks whether the
-    secondary's document version has caught up. Closes matching log entries as
-    \code{visible\_on\_follower} with a measured \code{replication\_delay\_ms}.
-  \item[\texttt{secondary-healthcheck}] Fires every \code{HEALTHCHECK\_INTERVAL\_MS=1000ms}.
-    Pings the secondary; on recovery, calls \code{drain\_pending\_logs()} and
-    \code{sweep\_synced\_items\_from\_secondary()} to batch-close any entries that
-    accumulated during an outage.
-\end{description}
+Two daemon threads run for the lifetime of the Flask process: a \textbf{reconciler} that
+fires every second to close pending log entries once the secondary's document version
+catches up, and a \textbf{health-check loop} that detects secondary recovery and drains
+any accumulated pending entries via batch reconciliation.
 
 % ═══════════════════════════════════════════════════════════════════════════════════
 \section{Schema Design}
 % ═══════════════════════════════════════════════════════════════════════════════════
 
-\subsection{Document Template}
+\subsection{Document Envelope}
 
-All six fleet collections share the same envelope schema. The domain-specific content
-lives in the nested \code{value} object, which varies per collection.
-
-\begin{lstlisting}[language={}, caption={Common document schema (all fleet collections)}]
-{
-  _id,                // MongoDB ObjectId — primary key
-  key,                // domain identifier: "VHC-001", "INC-TRK-1234..."
-  value,              // nested domain object (see Table 2)
-  version,            // integer, starts at 1, +1 on every write
-  leader_term,        // monotonically increasing leader epoch
-  last_log_index,     // foreign key into operation_logs
-  last_operation_id,  // UUID — uniquely identifies the last mutation
-  last_updated,       // UTC timestamp of last write
-  deleted,            // boolean — soft-delete flag (no physical removal)
-  created_by          // client_id string
-}
-\end{lstlisting}
-
-\subsection{Why \texttt{version} Is Central}
-
-The \code{version} field is the primary reconciliation key. When the background reconciler
-runs, it reads the secondary's \code{version} for a document and compares it to the
-\code{version\_after} stored in the pending log entry. If
-$\text{secondary.version} \geq \text{version\_after}$, replication is confirmed and
-\code{replication\_delay\_ms} is computed as:
-
-\[
-  \text{replication\_delay\_ms} = (\text{follower\_visible\_time} - \text{leader\_write\_time}) \times 1000
-\]
-
-A secondary \code{log\_index} comparison is used as a fallback when the version check
-alone is ambiguous (e.g.\ after concurrent updates to the same document).
-
-% ═══════════════════════════════════════════════════════════════════════════════════
-\section{Collection Purposes and Consistency Models}
-% ═══════════════════════════════════════════════════════════════════════════════════
-
-The six fleet collections are deliberately chosen to exhibit different write frequencies
-and consistency requirements, allowing all three DDIA consistency models to be
-demonstrated with realistic data.
+All six fleet collections share a common schema envelope. Every document carries the
+fields listed in Table~\ref{tab:envelope}; domain-specific data lives in the nested
+\code{value} object.
 
 \begin{table}[H]
   \centering
-  \caption{Fleet collections, consistency models, and read routing}
+  \caption{Common document envelope (all fleet collections)}
+  \label{tab:envelope}
   \small
-  \begin{tabularx}{\textwidth}{lllXl}
+  \begin{tabularx}{\textwidth}{llX}
     \toprule
-    Collection   & Write Freq. & Consistency Model  & Rationale                                              & Read From \\
+    Field & Type & Purpose \\
     \midrule
-    \code{vehicles}  & Very low    & Eventual Consistency   & Vehicle registry rarely changes; stale type/plate is acceptable.    & SECONDARY \\
-    \code{drivers}   & Low         & Eventual Consistency   & Driver assignments change at depot level; minutes of lag OK.        & SECONDARY \\
-    \code{depots}    & Very low    & Eventual Consistency   & Near-static reference data (city, coordinates).                      & SECONDARY \\
-    \code{shipments} & Medium      & Monotonic Reads        & Status must not go backwards: \texttt{delivered}$\nrightarrow$\texttt{pending}. & SECONDARY \\
-    \code{positions} & Very high   & Eventual Consistency   & GPS pings; fleet heatmap tolerates seconds of lag.                  & SECONDARY \\
-    \code{incidents} & Medium      & Read-After-Write       & Safety-critical: dispatcher must see own report instantly.          & PRIMARY   \\
+    \code{\_id}               & ObjectId  & MongoDB primary key \\
+    \code{key}                & string    & Domain identifier (e.g.\ \texttt{VHC-001}, \texttt{INC-TRK-42}) \\
+    \code{value}              & object    & Nested domain payload (varies per collection) \\
+    \code{version}            & integer   & Starts at 1; incremented on every write \\
+    \code{leader\_term}       & integer   & Monotonically increasing leader epoch \\
+    \code{last\_log\_index}   & integer   & Foreign key into \code{operation\_logs} \\
+    \code{last\_operation\_id}& string    & UUID of the last mutation \\
+    \code{last\_updated}      & datetime  & UTC timestamp of last write \\
+    \code{deleted}            & boolean   & Soft-delete flag (no physical removal) \\
     \bottomrule
   \end{tabularx}
 \end{table}
 
-\subsection{Index Design}
+The \code{version} field is the primary reconciliation key: when the background
+reconciler checks whether a pending log entry can be closed, it compares the secondary's
+\code{version} against the \code{version\_after} stored in the log. If
+$\text{secondary.version} \geq \text{version\_after}$, replication is confirmed and
+\code{replication\_delay\_ms} is computed as
+$(\text{follower\_visible\_time} - \text{leader\_write\_time}) \times 1000$.
 
-Each collection has compound indexes tailored to its dominant access pattern, avoiding
-collection scans on the secondary:
+\subsection{Fleet Collections}
 
-\begin{lstlisting}[language=Python, caption={Index definitions (db.py)}]
-# shipments — active list ordered by recency
-pdb["shipments"].create_index(
-    [("value.status", ASCENDING), ("last_updated", DESCENDING)],
-    name="shipments_status_updated",
-)
-# incidents — safety dashboard: open + severity
-pdb["incidents"].create_index(
-    [("value.resolved", ASCENDING), ("value.severity", ASCENDING)],
-    name="incidents_resolved_severity",
-)
-# positions — latest GPS ping for vehicle X
-pdb["positions"].create_index(
-    [("value.vehicle_id", ASCENDING), ("last_updated", DESCENDING)],
-    name="positions_vehicle_updated",
-)
-\end{lstlisting}
+\begin{table}[H]
+  \centering
+  \caption{Fleet collections: schema, consistency model, and read routing}
+  \label{tab:collections}
+  \small
+  \begin{tabularx}{\textwidth}{llXll}
+    \toprule
+    Collection      & Key prefix & Key fields in \texttt{value} & Consistency Model & Read From \\
+    \midrule
+    \code{vehicles}  & \code{VHC-}  & \texttt{vehicle\_id}, \texttt{plate}, \texttt{vehicle\_type}, \texttt{max\_payload\_kg}, \texttt{is\_active} & Eventual & SECONDARY \\[3pt]
+    \code{drivers}   & \code{DRV-}  & \texttt{driver\_id}, \texttt{name}, \texttt{license\_class}, \texttt{assigned\_vehicle\_id} & Eventual & SECONDARY \\[3pt]
+    \code{depots}    & \code{DEP-}  & \texttt{depot\_id}, \texttt{name}, \texttt{city}, \texttt{lat}, \texttt{lng}, \texttt{capacity\_vehicles} & Eventual & SECONDARY \\[3pt]
+    \code{shipments} & \code{SHP-}  & \texttt{shipment\_id}, \texttt{origin\_depot}, \texttt{destination\_depot}, \texttt{status} (pending / in\_transit / delivered), \texttt{weight\_kg} & Monotonic Reads & SECONDARY \\[3pt]
+    \code{positions} & \code{POS-}  & \texttt{vehicle\_id}, \texttt{lat}, \texttt{lng}, \texttt{city}, \texttt{speed\_kmh} & Eventual & SECONDARY \\[3pt]
+    \code{incidents} & \code{INC-}  & \texttt{vehicle\_id}, \texttt{incident\_type}, \texttt{severity} (low/medium/high/critical), \texttt{description}, \texttt{resolved} & Read-After-Write & \textbf{PRIMARY} \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\noindent\textbf{Rationale.}
+Vehicles, drivers, and depots change rarely; stale reads are acceptable.
+Shipment status must never appear to go backwards (\texttt{delivered} cannot revert to
+\texttt{pending}), so monotonic reads are required. GPS positions are high-frequency but
+a few seconds of lag is fine for fleet overview. Incidents are safety-critical: a
+dispatcher who files a breakdown report must see it immediately, so reads are always
+routed to PRIMARY.
+
+Each collection has compound indexes tailored to its dominant access pattern. For
+example, \code{positions} has an index on \texttt{(value.vehicle\_id, last\_updated
+DESC)} for latest-ping queries, and \code{incidents} has an index on
+\texttt{(value.resolved, value.severity)} for the safety dashboard.
 
 % ═══════════════════════════════════════════════════════════════════════════════════
 \section{Logging Mechanism}
 % ═══════════════════════════════════════════════════════════════════════════════════
 
-\subsection{Operation Log Schema}
+Every insert, update, and delete produces exactly one entry in \code{operation\_logs}.
+Table~\ref{tab:oplog} shows the schema.
 
-Every insert, update, and delete produces exactly one entry in \code{operation\_logs}:
+\begin{table}[H]
+  \centering
+  \caption{\texttt{operation\_logs} document schema}
+  \label{tab:oplog}
+  \small
+  \begin{tabularx}{\textwidth}{llX}
+    \toprule
+    Field & Type & Description \\
+    \midrule
+    \code{log\_index}              & integer  & Global monotonic counter (Raft-style log index) \\
+    \code{operation\_type}         & string   & \texttt{insert} / \texttt{update} / \texttt{delete} \\
+    \code{target\_collection}      & string   & Which fleet collection was mutated \\
+    \code{target\_id}              & ObjectId & Affected document \\
+    \code{leader\_write\_time}     & datetime & UTC -- when PRIMARY committed \\
+    \code{follower\_visible\_time} & datetime & UTC -- when SECONDARY showed \texttt{version\_after} (null initially) \\
+    \code{replication\_delay\_ms}  & float    & \texttt{follower\_visible\_time} -- \texttt{leader\_write\_time} (ms) \\
+    \code{version\_before}         & integer  & Document version before the mutation \\
+    \code{version\_after}          & integer  & Document version after the mutation \\
+    \code{write\_concern}          & string   & \texttt{majority} or \texttt{1} \\
+    \code{status}                  & string   & \texttt{pending\_follower} / \texttt{visible\_on\_follower} / \texttt{timeout} \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
 
-\begin{lstlisting}[language={}, caption={operation\_logs document schema}]
-{
-  operation_id,           // UUID — unique per operation
-  leader_term,            // Raft-style leader epoch
-  log_index,              // global monotonic counter (Raft log index)
-  operation_type,         // "insert" | "update" | "delete"
-  target_collection,      // "vehicles" | "shipments" | ... | "items"
-  target_id,              // ObjectId of the affected document
-  leader_write_time,      // UTC — when PRIMARY committed
-  follower_visible_time,  // UTC — when SECONDARY showed version_after (null initially)
-  replication_delay_ms,   // float — (follower_visible_time - leader_write_time) * 1000
-  version_before,         // integer — document version before the mutation
-  version_after,          // integer — document version after the mutation
-  client_id,              // who initiated the write
-  write_concern,          // "majority" | 1
-  status                  // "pending_follower" | "visible_on_follower" | "timeout"
-}
-\end{lstlisting}
-
-\subsection{Log Lifecycle}
-
-\begin{figure}[H]
-\centering
-\begin{tikzpicture}[
-  state/.style={draw, rounded corners=4pt, minimum width=3.2cm, minimum height=0.85cm,
-                align=center, font=\small},
-  arr/.style={-{Latex[length=3mm]}, thick},
-]
-  \node[state, fill=orange!30]   (pending)  {\code{pending\_follower}};
-  \node[state, fill=green!30,   right=3cm of pending]
-                                 (visible)  {\code{visible\_on\_follower}};
-  \node[state, fill=red!20,     below=1.5cm of pending]
-                                 (timeout)  {\code{timeout}};
-
-  \draw[arr] (pending) -- node[above, font=\tiny]{secondary.version $\geq$ version\_after} (visible);
-  \draw[arr] (pending) -- node[right, font=\tiny]{5\,s elapsed, not yet visible} (timeout);
-  \draw[arr, dashed] (timeout) to[bend right=30]
-    node[below, font=\tiny]{reconciler retries} (pending.south west);
-\end{tikzpicture}
-\caption{Log entry lifecycle. The reconciler moves entries from \code{pending\_follower}
-         to \code{visible\_on\_follower} once the secondary confirms the version.}
-\label{fig:lifecycle}
-\end{figure}
-
-\subsection{Completion Paths}
-
-\paragraph{Synchronous path (\wmajority).}
-After the primary commits and MongoDB returns, the application immediately polls the
-secondary for up to \code{POLL\_TIMEOUT\_MS = 5\,000\,ms} at \code{10\,ms} intervals.
-When the secondary's version matches, \code{follower\_visible\_time} is stamped and
-\code{replication\_delay\_ms} is computed inline. The log is closed before the HTTP
-response is returned to the client.
-
-\paragraph{Asynchronous path (\wone).}
-The write returns immediately; the log remains \code{pending\_follower}. Two background
-threads close it later:
-
-\begin{itemize}
-  \item The \textbf{reconciler} scans pending entries every second and checks secondary
-        version equality.
-  \item The \textbf{health-check loop}, on detecting a secondary recovery event, drains
-        all accumulated pending entries by calling \code{drain\_pending\_logs()} and
-        \code{sweep\_synced\_items\_from\_secondary()}.
-\end{itemize}
-
-\subsection{Role of \texttt{target\_collection}}
-
-A single \code{operation\_logs} collection serves all six fleet collections plus the
-legacy \code{items} collection. The reconciler uses \code{target\_collection} to know
-\textit{which} collection to query for the matching document. Without this field, the
-reconciler would query the wrong collection and pending logs would never close —
-causing \code{pending\_count} to grow unboundedly.
-
-\begin{lstlisting}[language=Python, caption={Reconciler routing via target\_collection (operations.py)}]
-for log in logs:
-    collection = log.get("target_collection", "items")  # routing key
-    if _secondary_has_state(
-        target_id, version_after, log_index, operation_id,
-        collection=collection                            # correct collection!
-    ):
-        _mark_log_visible(log["_id"], leader_write_time)
-\end{lstlisting}
+A log entry starts as \code{pending\_follower}. For synchronous writes the application
+polls the secondary inline (up to 5\,s at 10\,ms intervals) and closes the entry before
+returning the HTTP response. For asynchronous writes the entry stays pending and is
+closed by the background reconciler once it detects that the secondary's \code{version}
+has caught up. If the secondary does not catch up within the poll window
+the entry transitions to \code{timeout} and the reconciler retries on the next cycle.
 
 % ═══════════════════════════════════════════════════════════════════════════════════
-\section{Testing Replication and Consistency Behavior}
+\section{Experiments}
 % ═══════════════════════════════════════════════════════════════════════════════════
 
-\subsection{Automated Test Suite (\texttt{test\_replication.py})}
+The Flask dashboard at \url{http://localhost:5001/experiments} provides five runnable
+experiments. Each produces a DDIA-style communication timeline and saves the full event
+trace as a JSON file under \code{experiment\_results/<name>/}. Time flows left-to-right;
+diagonal arrows show inter-node messages labelled with version information and latency.
+
+% ─────────────────────────────────────────────────────────────────────────────────
+\subsection{Experiment 1 --- Synchronous Replication}
+% ─────────────────────────────────────────────────────────────────────────────────
+
+A GPS position is written to PRIMARY using synchronous replication (\code{w=majority}).
+MongoDB does not return \code{ok} until SECONDARY has replayed the oplog entry and
+acknowledged. The client receives the response only after the full round-trip completes.
+
+\textbf{Key observation:} The PRIMARY lane in the timeline shows a wide processing band
+blocked on SECONDARY's ACK. This directly visualises the synchronous replication penalty
+--- the price of durability.
+
+\begin{table}[H]
+  \centering
+  \caption{Synchronous Replication --- representative run}
+  \begin{tabular}{lrl}
+    \toprule
+    Metric & Value & Notes \\
+    \midrule
+    Total write duration     & 61.77\,ms  & Client $\to$ PRIMARY $\to$ SECONDARY $\to$ client \\
+    Oplog propagation        & 10.60\,ms  & From PRIMARY commit to SECONDARY apply \\
+    Stale reads possible     & No         & Both nodes at v1 before client receives \code{ok} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\placeholder{0.95\textwidth}{7cm}{Timeline: Synchronous Replication --- wide processing band on PRIMARY, SECONDARY ACK before client ok}{exp-sync}
+
+% ─────────────────────────────────────────────────────────────────────────────────
+\subsection{Experiment 2 --- Eventual Consistency (Asynchronous + Artificial Delay)}
+% ─────────────────────────────────────────────────────────────────────────────────
+
+The replica set is reconfigured with \code{secondaryDelaySecs=1} to make the
+inconsistency window observable. An asynchronous update (v1 $\to$ v2) is then issued;
+\code{ok} returns without waiting for the secondary. Three secondary reads follow at
+$\approx$330\,ms, $\approx$680\,ms, and $\approx$1281\,ms from experiment start.
+
+\textbf{Key observation:} The first two reads return stale data (v1); only the third,
+after the artificial delay expires, returns v2. The timeline shows red arrows for stale
+responses and a green arrow when the nodes finally converge.
+
+\begin{table}[H]
+  \centering
+  \caption{Eventual Consistency --- representative run}
+  \begin{tabular}{lrl}
+    \toprule
+    Metric & Value & Notes \\
+    \midrule
+    Write returned          & 127.13\,ms & Elevated due to replica-set reconfig overhead; typical async write is 9--12\,ms \\
+    Stale reads observed    & 2 of 3     & Reads at 330\,ms and 680\,ms from start returned v1 \\
+    Consistency window      & 1281\,ms   & Time from experiment start until secondary converged to v2 \\
+    Artificial delay        & 1\,s       & \code{secondaryDelaySecs=1} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\placeholder{0.95\textwidth}{7cm}{Timeline: Eventual Consistency --- stale reads (red) at 330\,ms and 680\,ms, consistent read (green) at 1281\,ms}{exp-eventual}
+
+% ─────────────────────────────────────────────────────────────────────────────────
+\subsection{Experiment 3 --- Read-After-Write}
+% ─────────────────────────────────────────────────────────────────────────────────
+
+A critical incident is inserted asynchronously. Two reads are issued immediately afterward:
+one to PRIMARY (the correct path for the writing session) and one to SECONDARY (the
+wrong path, where the oplog may not have arrived yet).
+
+\textbf{Key observation:} The PRIMARY read is always fresh --- the incident is visible
+within 1.11\,ms. The SECONDARY read may return nothing if the oplog has not yet arrived,
+demonstrating the Read-After-Write anomaly and why safety-critical data in the
+\code{incidents} collection is always read from PRIMARY.
+
+\begin{table}[H]
+  \centering
+  \caption{Read-After-Write --- representative run}
+  \begin{tabular}{lrl}
+    \toprule
+    Metric & Value & Notes \\
+    \midrule
+    Write returned (async)  & 8.94\,ms   & Primary only, no secondary wait \\
+    PRIMARY read latency    & 1.11\,ms   & Always returns the new document \\
+    Secondary sync time     & 5.0\,ms    & How quickly SECONDARY caught up on LAN \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\placeholder{0.95\textwidth}{7cm}{Timeline: Read-After-Write --- PRIMARY read (green, 1.11\,ms, always fresh); SECONDARY read potentially stale before oplog arrives}{exp-raw}
+
+% ─────────────────────────────────────────────────────────────────────────────────
+\subsection{Experiment 4 --- Monotonic Reads}
+% ─────────────────────────────────────────────────────────────────────────────────
+
+A shipment document is written five times asynchronously, advancing its status from
+\code{pending} to \code{delivered} (v1 through v5). After all writes complete on
+PRIMARY, five sequential reads are issued to the \textit{same} SECONDARY and the version
+sequence is checked for monotonicity.
+
+\textbf{Key observation:} On a fast LAN the secondary catches up before the first read
+is issued, so all five reads return v5. The version sequence [5, 5, 5, 5, 5] is strictly
+non-decreasing --- the monotonic guarantee holds. The guarantee would still hold on a
+slower link where earlier reads might return lower versions, because a single oplog
+stream can never apply entries out of order.
+
+\begin{table}[H]
+  \centering
+  \caption{Monotonic Reads --- representative run}
+  \begin{tabular}{lrl}
+    \toprule
+    Metric & Value & Notes \\
+    \midrule
+    Versions written (PRIMARY) & [1, 2, 3, 4, 5]    & 5 sequential updates \\
+    Versions seen (SECONDARY)  & [5, 5, 5, 5, 5]    & Secondary already at v5 before first read \\
+    Backward reads             & 0                   & Monotonicity never violated \\
+    Replication delay          & 13.14\,ms           & Time for v5 to reach SECONDARY \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\placeholder{0.95\textwidth}{7cm}{Timeline: Monotonic Reads --- 5 writes v1-v5 on PRIMARY, 5 sequential SECONDARY reads returning non-decreasing versions}{exp-monotonic}
+
+% ─────────────────────────────────────────────────────────────────────────────────
+\subsection{Experiment 5 --- Concurrent Writes: Propagation Order}
+% ─────────────────────────────────────────────────────────────────────────────────
+
+Two threads (User A and User B) each fire three asynchronous vehicle inserts simultaneously.
+PRIMARY serialises all six writes and assigns sequential \code{log\_index} values.
+After the burst, a snapshot read from SECONDARY verifies that all six documents are
+present and in the same log-index order that PRIMARY assigned.
+
+\textbf{Key observation:} The \code{log\_index} sequence [696--701] assigned by PRIMARY
+is reproduced exactly on SECONDARY. Because MongoDB's oplog is an append-only log
+applied in order, it is impossible for a document with \code{log\_index=698} to appear
+before \code{log\_index=697}.
+
+\begin{table}[H]
+  \centering
+  \caption{Concurrent Writes --- representative run}
+  \begin{tabular}{lrl}
+    \toprule
+    Metric & Value & Notes \\
+    \midrule
+    Total writes          & 6             & 3 from User A, 3 from User B (simultaneous) \\
+    Avg write latency (A) & 10.72\,ms     & Per-write round-trip to PRIMARY \\
+    Avg write latency (B) & 11.94\,ms     & Per-write round-trip to PRIMARY \\
+    All visible on SECONDARY & 6 / 6      & 100\% visible in snapshot read \\
+    Oplog batch replication & 43.92\,ms   & All 6 applied on SECONDARY \\
+    log\_index sequence   & 696--701      & Strictly monotonic; order preserved \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\placeholder{0.95\textwidth}{7cm}{Timeline: Concurrent Writes --- User A and B fire 6 simultaneous inserts; PRIMARY assigns log\_index 696-701; all 6 visible on SECONDARY in correct order}{exp-concurrent}
+
+\subsection{Experiment Summary}
+
+\begin{table}[H]
+  \centering
+  \caption{All five experiments at a glance}
+  \label{tab:summary}
+  \small
+  \begin{tabularx}{\textwidth}{lllX}
+    \toprule
+    Experiment & Write Concern & Collection & Key Result \\
+    \midrule
+    Sync Replication     & \code{majority} & \code{positions}  & 61.77\,ms total; both nodes at v1 before client gets \code{ok} \\
+    Eventual Consistency & \code{1}        & \code{positions}  & 2/3 reads stale; converges at 1281\,ms (\code{secondaryDelaySecs=1}) \\
+    Read-After-Write     & \code{1}        & \code{incidents}  & PRIMARY read always fresh (1.11\,ms); secondary may lag \\
+    Monotonic Reads      & \code{1}        & \code{shipments}  & Versions [5,5,5,5,5]; no backward read observed \\
+    Concurrent Writes    & \code{1}        & \code{vehicles}   & 6/6 docs visible; log\_index order preserved on SECONDARY \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+% ═══════════════════════════════════════════════════════════════════════════════════
+\section{Testing}
+% ═══════════════════════════════════════════════════════════════════════════════════
 
 Running \code{python test\_replication.py} on the control node executes seven tests
 against the live replica set. All fleet collections are dropped and recreated at the
@@ -477,161 +527,24 @@ start to ensure a clean state.
 
 \begin{table}[H]
   \centering
-  \caption{Automated test suite summary}
+  \caption{Automated test suite}
   \small
-  \begin{tabularx}{\textwidth}{llX}
+  \begin{tabularx}{\textwidth}{lX}
     \toprule
-    Test & Consistency Focus & What it proves \\
+    Test & What it proves \\
     \midrule
-    1. Basic CRUD        & ---                & Insert→Update→Delete: secondary version matches primary at each step \\
-    2. Fleet Static      & Eventual           & vehicles/drivers/depots replicate to the correct collection; \code{target\_collection} routing works \\
-    3. Shipment Monotonic & Monotonic Reads   & Shipment status \texttt{pending}$\to$\texttt{in\_transit}$\to$\texttt{delivered} — secondary version list is always non-decreasing \\
-    4. Position Burst    & Eventual           & 10 GPS inserts; avg/max \code{replication\_delay\_ms} measured; all 10 eventually appear on secondary \\
-    5. Incident RAW      & Read-After-Write   & Zero-wait PRIMARY read immediately after \wone\ incident insert always returns the new document \\
-    6. Async w=1 Window  & Eventual           & \wone\ GPS burst: some reads are stale right after write; after 2\,s all documents are present on secondary \\
-    7. Op-Log Routing    & ---                & \code{operation\_logs.target\_collection} correctly records the collection name for every insert \\
+    1. Basic CRUD        & Insert $\to$ Update $\to$ Delete: secondary version matches primary at each step \\
+    2. Fleet Static      & vehicles / drivers / depots replicate to the correct collection \\
+    3. Shipment Monotonic & Status \texttt{pending} $\to$ \texttt{in\_transit} $\to$ \texttt{delivered}: secondary version list is always non-decreasing \\
+    4. Position Burst    & 10 GPS inserts; avg/max \code{replication\_delay\_ms} measured; all 10 eventually visible on secondary \\
+    5. Incident RAW      & Immediate PRIMARY read after an asynchronous incident insert always returns the new document \\
+    6. Async Window      & Asynchronous GPS burst: some reads are stale right after write; after 2\,s all documents are present on secondary \\
+    7. Op-Log Routing    & \code{operation\_logs.target\_collection} correctly records the collection name for every insert \\
     \bottomrule
   \end{tabularx}
 \end{table}
 
-\subsubsection{Example: Monotonic Reads Assertion (Test 3)}
-
-\begin{lstlisting}[language=Python, caption={Monotonicity check in test\_shipment\_monotonic\_reads()}]
-secondary_versions = []
-for new_status in ["pending", "in_transit", "in_transit", "delivered"]:
-    update_item(shp_id, {"status": new_status, ...}, collection="shipments")
-    doc = db.get_secondary()["shipments"].find_one({"_id": shp_id})
-    secondary_versions.append(doc["version"])
-
-monotonic = all(
-    secondary_versions[i] <= secondary_versions[i + 1]
-    for i in range(len(secondary_versions) - 1)
-)
-# Expected: [2, 3, 4, 5] -> PASS
-# Should never be: [2, 3, 2, 5] -> FAIL (impossible with single oplog stream)
-\end{lstlisting}
-
-%% TODO: Replace the placeholder below with a screenshot of test_replication.py terminal output
-\placeholder{0.85\textwidth}{5cm}{Terminal output of test\_replication.py showing all 7 tests PASS}{test-output}
-
-\subsection{Interactive Experiment Dashboard}
-
-The Flask dashboard at \url{http://localhost:5001/experiments} provides four runnable
-experiments, each producing a DDIA-style communication timeline diagram. Time flows
-left-to-right; horizontal bands on a node's lane indicate processing time; diagonal
-arrows show inter-node messages.
-
-% ─────────────────────────────────────────────────────────────────────────────────
-\subsubsection{Experiment 1 — Synchronous Replication (\wmajority)}
-% ─────────────────────────────────────────────────────────────────────────────────
-
-\paragraph{Protocol.}
-The client writes a GPS position to PRIMARY with \wmajority. MongoDB does not return
-\code{ok} until SECONDARY has replayed the oplog entry and acknowledged. The application
-measures the total round-trip and decomposes it into sub-timings using a one-way network
-latency estimate from a pre-experiment ping sequence.
-
-\paragraph{Timeline shape.}
-\[
-  \underbrace{0 \to \text{net}_p}_{\text{request}} \quad
-  \underbrace{\text{net}_p \to d - \text{net}_p}_{\text{primary processing + oplog}} \quad
-  \underbrace{d - \text{net}_p \to d}_{\text{ok to client}}
-\]
-where $d$ is the measured total write duration and $\text{net}_p$ is the estimated
-one-way latency to PRIMARY.
-
-\paragraph{Key observation.}
-The \primary\ lane shows a wide horizontal processing band: it is blocked waiting for
-SECONDARY's ACK before releasing \code{ok}. This band directly visualises the
-\textit{synchronous replication penalty}.
-
-%% TODO: Replace with screenshot of Synchronous Replication experiment timeline
-\placeholder{0.95\textwidth}{7cm}{DDIA-style timeline: Synchronous Replication (w=majority) --- wide processing band on PRIMARY visible}{exp-sync}
-
-% ─────────────────────────────────────────────────────────────────────────────────
-\subsubsection{Experiment 2 — Eventual Consistency (\wone\ + Artificial Delay)}
-% ─────────────────────────────────────────────────────────────────────────────────
-
-\paragraph{Protocol.}
-A baseline document (\code{v1}) is established on both nodes. A 2-second
-\code{secondaryDelaySecs} is set via \code{replSetReconfig}. A \wone\ update to
-\code{v2} is issued; \code{ok} returns immediately. Seven secondary reads follow at
-200\,ms, 500\,ms, 1\,000\,ms, 1\,500\,ms, 2\,000\,ms, 2\,500\,ms, and 3\,000\,ms after
-the write. The delay is reset to zero before the function returns.
-
-\paragraph{Key observation.}
-Reads within the 2-second delay window return \code{v1} (stale). Once the oplog
-propagates, reads switch to \code{v2} (fresh). This visualises the
-\textit{eventual consistency window} — the period during which the system is inconsistent.
-
-%% TODO: Replace with screenshot of Eventual Consistency experiment timeline
-\placeholder{0.95\textwidth}{7cm}{DDIA-style timeline: Eventual Consistency --- stale reads (red arrows) followed by fresh reads (green)}{exp-eventual}
-
-% ─────────────────────────────────────────────────────────────────────────────────
-\subsubsection{Experiment 3 — Read-After-Write (DDIA Figure~5-3)}
-% ─────────────────────────────────────────────────────────────────────────────────
-
-\paragraph{The anomaly.}
-A user writes to PRIMARY with \wone\ (fire-and-forget). If their next read is
-load-balanced to SECONDARY, the oplog may not have arrived yet — the user's own write is
-invisible. This is the \textit{Read-After-Write} anomaly.
-
-\paragraph{The fix.}
-Route reads to PRIMARY for the session that performed the write. PRIMARY always has the
-latest committed data.
-
-\paragraph{Protocol.}
-A critical incident is inserted with \wone. Immediately:
-\begin{enumerate}
-  \item PRIMARY is queried → always returns the new document (\textit{RAW guaranteed}).
-  \item SECONDARY is queried → may return \code{null} if oplog has not arrived (\textit{anomaly visible}).
-\end{enumerate}
-The actual replication delay is measured by polling the secondary after the anomaly is
-detected, giving a precise \code{replication\_delay\_ms} for the timeline.
-
-%% TODO: Replace with screenshot of Read-After-Write experiment timeline
-\placeholder{0.95\textwidth}{7cm}{DDIA-style timeline: Read-After-Write --- PRIMARY read (green, always fresh), SECONDARY read (red when stale)}{exp-raw}
-
-\paragraph{Timeline structure (DDIA Fig.~5-3 equivalent).}
-Three actors are shown: \textbf{Client / Dashboard}, \primary, \secondary.
-\begin{itemize}
-  \item Write arrow: \textbf{Client} $\to$ \primary\ (\wone, returns immediately).
-  \item Oplog arrow: \primary\ $\dashrightarrow$ \secondary\ (async, measured delay).
-  \item Read 1 (correct path): \textbf{Client} $\to$ \primary\ $\to$ \textbf{Client}
-        (\textcolor{green!60!black}{\textbf{$\checkmark$ fresh}}).
-  \item Read 2 (wrong path): \textbf{Client} $\to$ \secondary\ $\to$ \textbf{Client}
-        (\textcolor{red}{\textbf{$\lightning$ stale}} if oplog not yet applied).
-\end{itemize}
-
-% ─────────────────────────────────────────────────────────────────────────────────
-\subsubsection{Experiment 4 — Monotonic Reads (DDIA Figure~5-4)}
-% ─────────────────────────────────────────────────────────────────────────────────
-
-\paragraph{The guarantee.}
-If a client always reads from the \textit{same} replica, it will never observe a version
-lower than one it has already seen. The classic violation occurs when a load balancer
-routes consecutive reads to different replicas at different replication lag levels.
-
-\paragraph{Protocol.}
-A shipment is inserted with \wone. The actual replication delay to SECONDARY is measured
-via polling. Three sequential reads are then issued to the \textit{same} SECONDARY.
-The version sequence is checked for monotonicity.
-
-\paragraph{Key observation.}
-On a fast LAN, the secondary catches up in $\approx 5\,\text{ms}$, so all three reads
-return \code{v1} (\code{[1, 1, 1]}). This is still monotonic and demonstrates the
-guarantee. On a slower link or with \code{secondaryDelaySecs}, earlier reads may return
-\code{v0} (not yet synced), but never \code{v1} then \code{v0}.
-
-\begin{lstlisting}[language=Python, caption={Monotonicity assertion in experiment runner}]
-versions = [r["version"] for r in reads]
-monotonic = all(versions[i] <= versions[i + 1] for i in range(len(versions) - 1))
-# [1, 1, 1] -> monotonic = True  (MONOTONIC HOLDS)
-# [1, 1, 0] -> monotonic = False (MONOTONIC VIOLATED -- should not happen)
-\end{lstlisting}
-
-%% TODO: Replace with screenshot of Monotonic Reads experiment timeline
-\placeholder{0.95\textwidth}{7cm}{DDIA-style timeline: Monotonic Reads --- three sequential SECONDARY reads, versions non-decreasing}{exp-monotonic}
+\placeholder{0.85\textwidth}{5cm}{Terminal output of test\_replication.py --- all 7 tests PASS}{test-output}
 
 \subsection{Manual Secondary Failure Test}
 
@@ -639,47 +552,39 @@ The following sequence was executed manually to validate the write guard and cat
 detection:
 
 \begin{enumerate}
-  \item Secondary machine is taken offline (network unplugged).
-  \item \wmajority\ write attempted → immediately rejected with
-        \code{RuntimeError: w=majority requires secondary to be reachable}.
-        No primary mutation occurs; no \code{operation\_logs} entry is created.
-  \item Write concern switched to \wone.
-  \item Insert succeeds on PRIMARY; \code{sec.ver = ---}; log status = \code{pending\_follower}.
-  \item Secondary machine brought back online.
-  \item MongoDB oplog replay begins; within $\sim$1\,s the reconciler detects
-        \code{secondary.version = version\_after}; log status transitions to
-        \code{visible\_on\_follower} with \code{replication\_delay\_ms} recorded.
+  \item Secondary machine taken offline (network unplugged).
+  \item Synchronous write attempted $\to$ rejected immediately; no primary mutation.
+  \item Replication mode switched to asynchronous.
+  \item Insert succeeds on PRIMARY; log status = \code{pending\_follower}.
+  \item Secondary brought back online; MongoDB oplog replay begins.
+  \item Within $\sim$1\,s the reconciler detects \code{secondary.version = version\_after}
+        and closes the log entry as \code{visible\_on\_follower} with
+        \code{replication\_delay\_ms} recorded.
 \end{enumerate}
 
-%% TODO: Insert 3-panel figure: (a) rejected write, (b) w=1 pending, (c) recovery synced
 \begin{figure}[H]
   \centering
   \begin{subfigure}[b]{0.32\textwidth}
-    \fbox{\begin{minipage}[c][4cm][c]{\textwidth}
-      \centering\small\textcolor{gray}{\textit{[Screenshot: w=majority write rejected — secondary offline]}}
+    \fbox{\begin{minipage}[c][3.5cm][c]{\textwidth}
+      \centering\small\textcolor{gray}{\textit{[Synchronous write rejected --- secondary offline]}}
     \end{minipage}}
-    \caption{\wmajority\ rejected}
-    \label{fig:fail-majority}
+    \caption{Synchronous write rejected}
   \end{subfigure}
   \hfill
   \begin{subfigure}[b]{0.32\textwidth}
-    \fbox{\begin{minipage}[c][4cm][c]{\textwidth}
-      \centering\small\textcolor{gray}{\textit{[Screenshot: w=1 write accepted, log pending\_follower]}}
+    \fbox{\begin{minipage}[c][3.5cm][c]{\textwidth}
+      \centering\small\textcolor{gray}{\textit{[Async write accepted, log pending\_follower]}}
     \end{minipage}}
-    \caption{\wone\ accepted, pending}
-    \label{fig:pending}
+    \caption{Async write accepted, pending}
   \end{subfigure}
   \hfill
   \begin{subfigure}[b]{0.32\textwidth}
-    \fbox{\begin{minipage}[c][4cm][c]{\textwidth}
-      \centering\small\textcolor{gray}{\textit{[Screenshot: secondary back, log visible\_on\_follower]}}
+    \fbox{\begin{minipage}[c][3.5cm][c]{\textwidth}
+      \centering\small\textcolor{gray}{\textit{[secondary back, log visible\_on\_follower]}}
     \end{minipage}}
-    \caption{Recovery \& catch-up}
-    \label{fig:recovery}
+    \caption{Recovery complete}
   \end{subfigure}
-  \caption{Secondary failure and recovery sequence. Left: write guard rejects before primary
-           mutation. Centre: \wone\ write accepted with \code{pending\_follower} status.
-           Right: oplog replay completes and reconciler closes the log entry.}
+  \caption{Secondary failure and recovery sequence.}
   \label{fig:failure-sequence}
 \end{figure}
 
@@ -687,157 +592,121 @@ detection:
 \section{Performance Measurements}
 % ═══════════════════════════════════════════════════════════════════════════════════
 
-%% TODO: Fill in actual values from experiment runs and benchmark.py
-
-\subsection{Replication Latency}
-
-One-way network latency between the control node and each MongoDB instance was measured
-before each experiment run using MongoDB \code{ping} RTT divided by two
-(\code{\_measure\_net\_one\_way}). Representative values observed during testing:
-
 \begin{table}[H]
   \centering
   \caption{Measured network and replication latencies (LAN)}
-  \begin{tabular}{lrrl}
+  \begin{tabular}{lrl}
     \toprule
-    Metric                                & Min   & Avg   & Notes \\
+    Metric & Typical & Notes \\
     \midrule
-    One-way latency to PRIMARY (net\_p)   & \textit{X.X} ms & \textit{X.X} ms & ping RTT / 2 \\
-    One-way latency to SECONDARY (net\_s) & \textit{X.X} ms & \textit{X.X} ms & ping RTT / 2 \\
-    \wmajority\ write total               & \textit{X.X} ms & \textit{X.X} ms & includes oplog ACK \\
-    \wone\ write total                    & \textit{X.X} ms & \textit{X.X} ms & primary only \\
-    Async oplog propagation delay         & \textit{X.X} ms & \textit{X.X} ms & polled from secondary \\
+    One-way latency to PRIMARY    & 9.6\,ms        & ping RTT / 2 \\
+    One-way latency to SECONDARY  & 2.2\,ms        & direct connection \\
+    Synchronous write total       & 61.8\,ms       & includes oplog ACK round-trip \\
+    Asynchronous write total      & 9--12\,ms      & primary only \\
+    Oplog propagation (no delay)  & 10--44\,ms     & varies with batch size \\
+    Oplog propagation (1\,s delay)& 326--1281\,ms  & with \code{secondaryDelaySecs=1} \\
     \bottomrule
   \end{tabular}
 \end{table}
 
-%% TODO: Add bar chart or table from benchmark.py results
-
-\subsection{Write Concern Overhead}
-
-The synchronous replication overhead (\wmajority\ minus \wone\ write duration) directly
-measures the cost of the ACK round-trip to SECONDARY. On our LAN this was approximately:
-
-\[
-  \text{overhead} \approx 2 \times \text{net}_s + \text{secondary\_apply\_time}
-\]
-
-%% TODO: Insert figure from benchmark results
+The synchronous replication overhead over asynchronous is $\approx$52\,ms on this LAN.
+The dominant cost is the SECONDARY's write application and disk acknowledgement
+($\approx$46\,ms), not the network transfer itself ($<$5\,ms one-way).
 
 % ═══════════════════════════════════════════════════════════════════════════════════
 \section{Discussion}
 % ═══════════════════════════════════════════════════════════════════════════════════
 
-\subsection{Durability--Availability Trade-off}
+\textbf{Durability vs.\ availability.}
+Synchronous replication guarantees that a committed write survives a primary crash because
+SECONDARY has already acknowledged it. The cost is $\approx$62\,ms latency and
+unavailability while the secondary is unreachable. Asynchronous replication always
+succeeds on the primary but risks data
+loss if the primary crashes before the oplog propagates, and produces temporary stale
+reads on the secondary.
 
-The experiment confirms the fundamental tension described in DDIA Chapter 5:
+\textbf{Consistency anomalies on a fast LAN.}
+Our LAN produces sub-5\,ms RTTs, so the secondary typically syncs within 10--15\,ms of
+an asynchronous write. Stale reads are difficult to observe without the artificial
+\code{secondaryDelaySecs} setting used in Experiment 2. Real deployments across data
+centres would exhibit these anomalies naturally.
 
-\begin{itemize}
-  \item \wmajority\ provides strong durability: a committed write is guaranteed to
-        survive a primary crash because at least one other member (the secondary) has
-        acknowledged it. The cost is latency ($\approx$ one full oplog round-trip) and
-        unavailability when the secondary is unreachable.
-  \item \wone\ provides high availability: writes always succeed on the primary
-        regardless of secondary state. The cost is potential data loss if the primary
-        crashes before the oplog propagates, and temporary read inconsistency
-        (stale secondary reads).
-\end{itemize}
+\textbf{Why monotonicity holds.}
+MongoDB's oplog is a strictly ordered, append-only log. A secondary applies entries in
+log-index order, so a document's version can only increase on the secondary. Reading
+from a single fixed replica therefore guarantees monotonic reads by design.
 
-\subsection{Consistency Anomalies on a Fast LAN}
-
-Our LAN produces round-trip times of $< 1\,\text{ms}$, which means the secondary
-typically syncs within $5\,\text{ms}$ of a \wone\ write. This makes stale reads
-difficult to observe without artificial delay (\code{secondaryDelaySecs}). The
-Eventual Consistency experiment explicitly introduces a 2-second delay to make the
-anomaly visible. Real-world deployments across data centres or WAN links would observe
-these anomalies naturally.
-
-\subsection{Single Oplog Stream Prevents Backwards Reads}
-
-MongoDB's oplog is a strictly ordered, append-only log. A secondary applies oplog entries
-in \textit{log index order}, so the version field on any document can only increase on
-the secondary. This is why the Monotonic Reads guarantee holds naturally when reading
-from a single fixed secondary: you may see stale versions, but you will never see a
-version go backwards.
-
-\subsection{Limitations and Future Work}
-
-\begin{itemize}
-  \item \textbf{Two-node, non-voting secondary:} automatic failover is disabled.
-        A three-node replica set with an arbiter would enable re-election.
-  \item \textbf{No partitioned secondary for Consistent Prefix Reads:} DDIA Figure 5-5
-        requires at least two secondaries at different replication lags to demonstrate
-        out-of-order read anomalies. Our single-secondary setup cannot reproduce this.
-  \item \textbf{Application-level log vs.\ oplog:} our \code{operation\_logs} duplicates
-        some information already in MongoDB's native oplog. A production system would
-        integrate with the oplog via change streams instead.
-\end{itemize}
+\textbf{Limitations.}
+A two-node, non-voting secondary disables automatic failover. A three-node set with an
+arbiter would enable re-election. Additionally, our application-level \code{operation\_logs}
+duplicates information already in MongoDB's native oplog; a production system would use
+change streams instead of polling.
 
 % ═══════════════════════════════════════════════════════════════════════════════════
 \section{Conclusion}
 % ═══════════════════════════════════════════════════════════════════════════════════
 
-This project implemented a complete single-leader replication system on real hardware
-and demonstrated three consistency models from DDIA Chapter 5:
+This project implemented a complete single-leader replication system on real hardware and
+demonstrated five consistency scenarios across two write concern modes:
 
 \begin{enumerate}
-  \item \textbf{Synchronous Replication (\wmajority):} PRIMARY waits for SECONDARY ACK.
-        Every write is durable; latency penalty equals one oplog round-trip.
+  \item \textbf{Synchronous Replication:} 62\,ms total write; both nodes consistent
+        before the client receives \code{ok}.
+  \item \textbf{Eventual Consistency (asynchronous):} writes return in $<$10\,ms; secondary
+        serves stale data for up to 1281\,ms when an artificial delay is in place.
   \item \textbf{Read-After-Write:} routing reads to PRIMARY for the writing session
-        guarantees the writer always sees their own write, regardless of secondary lag.
-  \item \textbf{Monotonic Reads:} pinning all reads from a session to the same replica
-        ensures version numbers never decrease, even when that replica lags behind the primary.
+        guarantees the writer always sees their own write (1.11\,ms read latency).
+  \item \textbf{Monotonic Reads:} pinning reads to the same secondary ensures version
+        numbers never decrease, regardless of replication lag.
+  \item \textbf{Concurrent Writes:} the primary serialises concurrent writes via the
+        oplog; the secondary preserves this order exactly.
 \end{enumerate}
 
 The application-level operation log (\code{operation\_logs}) provides full observability:
-every write is tracked from \code{leader\_write\_time} through \code{follower\_visible\_time},
-making replication delay a first-class, measured metric rather than an invisible side effect.
-
-The DDIA-style timeline visualisations on the experiment dashboard translate these abstract
-consistency properties into concrete, observable message sequences — directly linking
-implementation to the theoretical model.
+every write is tracked from \code{leader\_write\_time} through
+\code{follower\_visible\_time}, making replication delay a first-class measured metric.
+The six-collection fleet domain maps each collection to a distinct consistency model,
+showing how a single replica set can serve both safety-critical (read-after-write on
+incidents) and eventually-consistent (GPS heatmap on positions) workloads simultaneously.
 
 % ═══════════════════════════════════════════════════════════════════════════════════
 \appendix
-\section{File Structure}
+\section{Repository Structure}
 % ═══════════════════════════════════════════════════════════════════════════════════
-
-\begin{lstlisting}[language={}, caption={Repository layout}]
-ceng465_project/
-  control_node/
-    app.py               -- Flask application (routes, API endpoints)
-    config.py            -- Connection strings, timeouts, collection names
-    db.py                -- MongoDB client singletons + index creation
-    operations.py        -- Write/read layer: CRUD, fleet helpers, reconciler
-    experiment_runner.py -- 4 consistency experiments + DDIA event builder
-    test_replication.py  -- Automated test suite (7 tests)
-    benchmark.py         -- Write latency benchmarks
-    templates/
-      index.html         -- Fleet management dashboard
-      experiments.html   -- DDIA timeline experiment runner
-  presentation/
-    main.tex             -- LaTeX Beamer slides
-  report/
-    main.tex             -- This report
-    figures/             -- Screenshots and diagrams
-\end{lstlisting}
-
-\section{Write Concern API Reference}
-\label{app:api}
 
 \begin{table}[H]
   \centering
-  \caption{Key configuration constants (config.py)}
+  \caption{Key source files}
+  \small
+  \begin{tabularx}{\textwidth}{lX}
+    \toprule
+    File & Role \\
+    \midrule
+    \code{app.py}               & Flask routes and API endpoints \\
+    \code{config.py}            & Connection strings, timeouts, collection names \\
+    \code{db.py}                & MongoDB client singletons and index creation \\
+    \code{operations.py}        & CRUD layer, fleet helpers, reconciler, health-check threads \\
+    \code{experiment\_runner.py}& 5 consistency experiments + JSON result persistence \\
+    \code{test\_replication.py} & Automated test suite (7 tests) \\
+    \code{templates/experiments.html} & DDIA timeline experiment dashboard \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\section{Configuration Constants}
+
+\begin{table}[H]
+  \centering
+  \caption{Key constants from \texttt{config.py}}
   \begin{tabular}{lrl}
     \toprule
-    Constant                     & Value   & Purpose \\
+    Constant & Value & Purpose \\
     \midrule
-    \code{POLL\_INTERVAL\_MS}    & 10 ms   & Reconciler secondary poll cadence \\
-    \code{POLL\_TIMEOUT\_MS}     & 5\,000 ms & Maximum wait for synchronous confirmation \\
-    \code{WRITE\_TIMEOUT\_MS}    & 5\,000 ms & MongoDB wire-level write timeout \\
-    \code{RECONCILE\_INTERVAL\_MS} & 1\,000 ms & Background reconciler loop cadence \\
-    \code{HEALTHCHECK\_INTERVAL\_MS} & 1\,000 ms & Secondary health check cadence \\
-    \code{SERVER\_SELECTION\_TIMEOUT\_MS} & 800 ms & MongoDB driver timeout \\
+    \code{POLL\_INTERVAL\_MS}        & 10\,ms     & Inline secondary poll cadence \\
+    \code{POLL\_TIMEOUT\_MS}         & 5\,000\,ms & Max wait for synchronous confirmation \\
+    \code{RECONCILE\_INTERVAL\_MS}   & 1\,000\,ms & Background reconciler loop cadence \\
+    \code{HEALTHCHECK\_INTERVAL\_MS} & 1\,000\,ms & Secondary health check cadence \\
+    \code{SERVER\_SELECTION\_TIMEOUT\_MS} & 800\,ms & MongoDB driver timeout \\
     \bottomrule
   \end{tabular}
 \end{table}

@@ -370,6 +370,16 @@ details summary:hover { color: var(--text); }
   color: var(--purple);
   border: 1px solid rgba(163,113,247,.3);
 }
+.readonly-banner {
+  border: 1px solid rgba(227,179,65,.45);
+  background: rgba(227,179,65,.10);
+  color: var(--yellow);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.45;
+  display: none;
+}
 </style>
 </head>
 <body>
@@ -463,6 +473,7 @@ details summary:hover { color: var(--text); }
 
   <!-- ── Main ────────────────────────────────────────────────── -->
   <main class="main" id="main-area">
+    <div class="readonly-banner" id="readonly-banner"></div>
     <div class="welcome" id="welcome-msg">
       <h2>Select an Experiment</h2>
       <p>Sol panelden bir consistency deneyi seçin ve <strong>▶ Run</strong> butonuna tıklayın.<br>
@@ -502,6 +513,7 @@ const EXP_TAG = {
 };
 
 let currentExperiment = null;
+let readOnlyMode = false;
 
 /* ── Experiment selector ──────────────────────────────────────── */
 function selectExperiment(name) {
@@ -514,6 +526,10 @@ function selectExperiment(name) {
 /* ── Run experiment ───────────────────────────────────────────── */
 async function runExperiment(name) {
   selectExperiment(name);
+  if (readOnlyMode) {
+    showError('PRIMARY unavailable. Saved history can be viewed, but new experiment runs require PRIMARY.');
+    return;
+  }
   const btn  = document.getElementById('btn-' + name);
   const card = document.getElementById('card-' + name);
   btn.disabled = true;
@@ -551,6 +567,31 @@ async function runExperiment(name) {
     btn.textContent = '▶ Run';
     showError(e.message);
   }
+}
+
+async function loadStatus() {
+  try {
+    const res = await fetch('/api/status');
+    const status = await res.json();
+    applyReadOnlyStatus(Boolean(status.read_only), status.read_only_reason);
+  } catch (e) {
+    applyReadOnlyStatus(true, e.message);
+  }
+}
+
+function applyReadOnlyStatus(enabled, reason) {
+  readOnlyMode = enabled;
+  const banner = document.getElementById('readonly-banner');
+  if (enabled) {
+    banner.textContent = `Read-only mode: PRIMARY unavailable. History can be viewed; new runs are disabled. ${reason || ''}`.slice(0, 260);
+    banner.style.display = 'block';
+  } else {
+    banner.style.display = 'none';
+  }
+  document.querySelectorAll('.run-btn').forEach(btn => {
+    btn.disabled = enabled;
+    btn.textContent = enabled ? 'Read-only' : '▶ Run';
+  });
 }
 
 /* ── History ──────────────────────────────────────────────────── */
@@ -1321,6 +1362,7 @@ function escHtml(str) {
 }
 
 /* ── Init ─────────────────────────────────────────────────────── */
+loadStatus();
 loadHistory();
 </script>
 </body>

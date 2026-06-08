@@ -15,6 +15,8 @@ from operations import insert_item, update_item, delete_item
 import experiment_runner
 
 app = Flask(__name__)
+READ_ONLY_MODE = False
+READ_ONLY_REASON = None
 
 
 # ---------------------------------------------------------------------------
@@ -41,6 +43,34 @@ def _serialize_list(docs):
     return out
 
 
+def _primary_hello():
+    return db.get_primary().command("hello")
+
+
+def _secondary_health_without_reconcile():
+    health = operations.get_secondary_health()
+    try:
+        db.get_secondary().command("ping")
+        operations.mark_secondary_reachable()
+        health = operations.get_secondary_health()
+    except Exception as e:
+        health = operations.get_secondary_health()
+        health.update({
+            "reachable": False,
+            "last_error": str(e),
+        })
+    return health
+
+
+def _read_only_error(action: str, exc: Exception):
+    return jsonify({
+        "ok": False,
+        "read_only": True,
+        "error": f"{action} requires PRIMARY; dashboard is running read-only because PRIMARY is unavailable.",
+        "detail": str(exc),
+    }), 503
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -55,18 +85,21 @@ def api_status():
     primary_status = {"host": "mongo-primary.lan:27017", "writable": False, "reachable": False}
     secondary_status = {"host": "mongo-secondary.lan:27017", "secondary": False, "reachable": False}
     try:
-        health = operations.refresh_secondary_health_once()
-    except Exception:
-        health = operations.get_secondary_health()
-
-    try:
-        info = db.get_primary().command("hello")
+        info = _primary_hello()
         primary_status.update({
             "writable": info.get("isWritablePrimary", False),
             "reachable": True,
         })
     except Exception as e:
         primary_status["error"] = str(e)
+
+    if primary_status["writable"]:
+        try:
+            health = operations.refresh_secondary_health_once()
+        except Exception:
+            health = _secondary_health_without_reconcile()
+    else:
+        health = _secondary_health_without_reconcile()
 
     secondary_status.update({
         "secondary": bool(health.get("reachable")),
@@ -75,12 +108,13 @@ def api_status():
     if health.get("last_error"):
         secondary_status["error"] = health["last_error"]
 
-    status_code = 200 if primary_status["reachable"] else 500
     return jsonify({
         "primary": primary_status,
         "secondary": secondary_status,
         "secondary_health": _jsonable_health(health),
-    }), status_code
+        "read_only": not primary_status["writable"],
+        "read_only_reason": primary_status.get("error") or READ_ONLY_REASON,
+    }), 200
 
 
 @app.route("/api/items")
@@ -91,8 +125,19 @@ def api_items():
     Supported: vehicles, drivers, depots, shipments, positions, incidents, items
     """
     collection = request.args.get("collection", "vehicles")
-    pdb = db.get_primary()
-    primary_docs = list(pdb[collection].find().sort("last_updated", -1).limit(50))
+    source = "primary"
+    primary_unavailable = None
+    try:
+        pdb = db.get_primary()
+        primary_docs = list(pdb[collection].find().sort("last_updated", -1).limit(50))
+    except PyMongoError as e:
+        primary_unavailable = str(e)
+        source = "secondary"
+        try:
+            pdb = db.get_secondary()
+            primary_docs = list(pdb[collection].find().sort("last_updated", -1).limit(50))
+        except PyMongoError:
+            return jsonify([])
 
     op_ids = [d.get("last_operation_id") for d in primary_docs if d.get("last_operation_id")]
     log_indexes = [d.get("last_log_index") for d in primary_docs if d.get("last_log_index") is not None]
@@ -129,7 +174,7 @@ def api_items():
             synced = True
             secondary_version = log.get("version_after", doc.get("version"))
 
-        if synced:
+        if source == "primary" and synced:
             try:
                 operations.mark_pending_logs_visible_for_item(
                     doc["_id"],
@@ -153,6 +198,9 @@ def api_items():
             "synced": synced,
             "secondary_reachable": secondary_reachable,
             "collection": collection,
+            "source": source,
+            "read_only": source == "secondary",
+            "primary_error": primary_unavailable,
         })
     return jsonify(result)
 
@@ -166,8 +214,16 @@ def api_logs():
     except Exception as e:
         reconcile_error = str(e)
 
-    pdb = db.get_primary()
-    logs = list(pdb["operation_logs"].find().sort("log_index", -1).limit(200))
+    try:
+        pdb = db.get_primary()
+        logs = list(pdb["operation_logs"].find().sort("log_index", -1).limit(200))
+    except PyMongoError as e:
+        reconcile_error = reconcile_error or str(e)
+        try:
+            pdb = db.get_secondary()
+            logs = list(pdb["operation_logs"].find().sort("log_index", -1).limit(200))
+        except PyMongoError as sec_e:
+            return jsonify({"ok": False, "error": str(sec_e), "primary_error": reconcile_error}), 503
     result = []
     for log in logs:
         result.append({
@@ -209,6 +265,8 @@ def api_insert():
             "visible_on_follower" if delay is not None else "timeout"
         )
         return jsonify({"ok": True, "item_id": str(item_id), "delay_ms": delay, "status": status})
+    except PyMongoError as e:
+        return _read_only_error("Insert", e)
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
@@ -225,6 +283,8 @@ def api_update():
             "visible_on_follower" if delay is not None else "timeout"
         )
         return jsonify({"ok": True, "delay_ms": delay, "status": status})
+    except PyMongoError as e:
+        return _read_only_error("Update", e)
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
@@ -240,6 +300,8 @@ def api_delete():
             "visible_on_follower" if delay is not None else "timeout"
         )
         return jsonify({"ok": True, "delay_ms": delay, "status": status})
+    except PyMongoError as e:
+        return _read_only_error("Delete", e)
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
@@ -331,6 +393,8 @@ def api_run_experiment():
         return jsonify({"ok": True, "result": result})
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 400
+    except PyMongoError as e:
+        return _read_only_error("Experiment run", e)
     except Exception as e:
         import traceback
         return jsonify({"ok": False, "error": str(e), "trace": traceback.format_exc()}), 500
@@ -371,6 +435,11 @@ def api_experiment_result_file(name, filename):
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    db.ensure_indexes()
-    operations.start_reconciler()
+    try:
+        db.ensure_indexes()
+        operations.start_reconciler()
+    except PyMongoError as e:
+        READ_ONLY_MODE = True
+        READ_ONLY_REASON = str(e)
+        print(f"WARNING: PRIMARY unavailable; starting dashboard in read-only mode: {e}")
     app.run(host="0.0.0.0", port=5001, debug=False, threaded=True)
