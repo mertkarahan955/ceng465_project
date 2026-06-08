@@ -379,7 +379,7 @@ function bigStat(slide, x, y, number, label, color) {
   // Arrow right → timeout (from pending)
   s.addShape(pres.shapes.LINE, { x: 9.0, y: 1.87, w: 0.4, h: 0, line: { color: "DC2626", width: 1.5, dashType: "dash" } });
   s.addText("poll timeout (5 s)", {
-    x: 9.05, y: 1.72, w: 1.5, h: 0.28,
+    x: 9.05, y: 1.55, w: 1.5, h: 0.28,
     fontSize: 8, color: "DC2626", margin: 0,
   });
 
@@ -496,99 +496,89 @@ function bigStat(slide, x, y, number, label, color) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// SLIDE 7 — Experiments 3 & 4: RAW + Monotonic Reads
+// SLIDE 7 — Experiment 3: Read-After-Write
 // ═══════════════════════════════════════════════════════════════
 {
   const s = pres.addSlide();
   s.background = { color: "F8FAFB" };
-  addTitle(s, "Experiments 3 & 4 — Read-After-Write & Monotonic Reads");
+  addTitle(s, "Experiment 3 — Read-After-Write Consistency", "Insert on PRIMARY (w=1), then immediate reads from PRIMARY and SECONDARY  ·  collection: incidents");
 
-  // Left: RAW
-  accentCard(s, 0.35, 1.1, 4.55, 4.2);
-  s.addText("Experiment 3", {
-    x: 0.55, y: 1.16, w: 4.2, h: 0.28, fontSize: 9.5, color: G_MID, bold: true, margin: 0,
-  });
-  s.addText("Read-After-Write", {
-    x: 0.55, y: 1.42, w: 4.2, h: 0.36, fontSize: 15, bold: true, color: G_DARK, margin: 0,
-  });
-  s.addText("collection: incidents", {
-    x: 0.55, y: 1.76, w: 4.2, h: 0.25, fontSize: 10, color: GRAY, italic: true, margin: 0,
+  s.addText("An incident is inserted asynchronously (w=1), then immediately re-read — once via the RAW path (PRIMARY), once via the naive path (SECONDARY) — to check whether the dispatcher sees its own write.", {
+    x: 0.4, y: 1.12, w: 9.2, h: 0.45, fontSize: 11, color: INK, margin: 0,
   });
 
-  s.addText("Incident inserted asynchronously. Two reads fired immediately:", {
-    x: 0.55, y: 2.1, w: 4.15, h: 0.35, fontSize: 10.5, color: INK, margin: 0,
-  });
+  // Stats — measured run: log_index 750, operation_id f717e047
+  bigStat(s, 0.4,  1.58, "6.5 ms",  "PRIMARY read — always fresh", G_DARK);
+  bigStat(s, 2.65, 1.58, "⚡ stale", "SECONDARY read — write not yet visible", AMBER);
+  bigStat(s, 4.9,  1.58, "3.93 ms", "Secondary replication delay", G_MID);
+  bigStat(s, 7.15, 1.58, "0",       "Stale reads after PRIMARY routing", G_DARK);
 
-  // RAW bullets
-  const rawItems = [
-    { icon: "✓", color: G_DARK, label: "PRIMARY read", val: "1.11 ms", note: "always fresh" },
-    { icon: "⚠", color: AMBER, label: "SECONDARY read", val: "may return null", note: "if oplog not yet arrived" },
-    { icon: "✓", color: G_DARK, label: "Secondary sync", val: "5 ms", note: "fast LAN catch-up" },
-  ];
-  rawItems.forEach(({ icon, color, label, val, note }, i) => {
-    const y = 2.52 + i * 0.64;
-    s.addText(icon, { x: 0.55, y, w: 0.3, h: 0.38, fontSize: 14, color, bold: true, margin: 0 });
-    s.addText(label, { x: 0.88, y, w: 2.0, h: 0.38, fontSize: 11, bold: true, color: INK, margin: 0 });
-    s.addText(val, { x: 2.9, y, w: 1.0, h: 0.38, fontSize: 11, bold: true, color, align: "right", margin: 0 });
-    s.addText(note, { x: 0.88, y: y + 0.3, w: 3.8, h: 0.26, fontSize: 9, color: GRAY, italic: true, margin: 0 });
+  // Key observation & fix — log_index 750, run 20260608_223921_2038
+  s.addShape(pres.shapes.RECTANGLE, {
+    x: 0.4, y: 2.62, w: 9.2, h: 0.85,
+    fill: { color: G_LIGHT }, line: { color: G_DARK, width: 0.8 },
   });
+  s.addShape(pres.shapes.RECTANGLE, {
+    x: 0.4, y: 2.62, w: 0.07, h: 0.85,
+    fill: { color: G_DARK }, line: { color: G_DARK, width: 0 },
+  });
+  s.addText([
+    { text: "Key observation & fix:  ", options: { bold: true, color: G_DARK } },
+    { text: "Reading the dispatcher's own incident from PRIMARY returns it fresh in 6.5 ms. The same read against SECONDARY, fired ~6 ms later, still answers \"not visible on secondary\" — replication only catches up ~3.9 ms afterward — so a follower-routed client would briefly believe its own incident doesn't exist. Fix: route reads to PRIMARY for the writing session (\"read-your-own-writes\" stickiness), at the cost of extra load on the leader (log_index 750, operation_id f717e047).", options: { color: INK } },
+  ], { x: 0.58, y: 2.62, w: 8.95, h: 0.85, fontSize: 10, valign: "middle", margin: 0 });
 
-  s.addShape(pres.shapes.RECTANGLE, { x: 0.55, y: 4.46, w: 4.15, h: 0.56, fill: { color: G_LIGHT }, line: { color: G_DARK, width: 0.5 } });
-  s.addText("Fix: route reads to PRIMARY for the writing session → dispatcher always sees own incident.", {
-    x: 0.65, y: 4.46, w: 3.95, h: 0.56, fontSize: 10.5, color: G_DARK, bold: true, valign: "middle", margin: 0,
-  });
-
-  // Right: Monotonic Reads
-  accentCard(s, 5.1, 1.1, 4.55, 4.2);
-  s.addText("Experiment 4", {
-    x: 5.3, y: 1.16, w: 4.2, h: 0.28, fontSize: 9.5, color: G_MID, bold: true, margin: 0,
-  });
-  s.addText("Monotonic Reads", {
-    x: 5.3, y: 1.42, w: 4.2, h: 0.36, fontSize: 15, bold: true, color: G_DARK, margin: 0,
-  });
-  s.addText("collection: shipments  ·  5 async writes (v1→v5)", {
-    x: 5.3, y: 1.76, w: 4.2, h: 0.25, fontSize: 10, color: GRAY, italic: true, margin: 0,
-  });
-
-  s.addText("Status progression: pending → in_transit → delivered", {
-    x: 5.3, y: 2.1, w: 4.15, h: 0.35, fontSize: 10.5, color: INK, margin: 0,
-  });
-
-  // Version table
-  const verTbl = [
-    [
-      { text: "Read", options: { bold: true, color: WHITE, fill: { color: G_DARK } } },
-      { text: "Version seen", options: { bold: true, color: WHITE, fill: { color: G_DARK } } },
-      { text: "Monotonic?", options: { bold: true, color: WHITE, fill: { color: G_DARK } } },
-    ],
-    ["#1 at 59 ms",  { text: "v5", options: { color: G_DARK, bold: true } }, { text: "✓", options: { color: G_DARK, bold: true } }],
-    ["#2 at 93 ms",  { text: "v5", options: { color: G_DARK, bold: true } }, { text: "✓", options: { color: G_DARK, bold: true } }],
-    ["#3 at 127 ms", { text: "v5", options: { color: G_DARK, bold: true } }, { text: "✓", options: { color: G_DARK, bold: true } }],
-    ["#4 at 159 ms", { text: "v5", options: { color: G_DARK, bold: true } }, { text: "✓", options: { color: G_DARK, bold: true } }],
-    ["#5 at 194 ms", { text: "v5", options: { color: G_DARK, bold: true } }, { text: "✓", options: { color: G_DARK, bold: true } }],
-  ];
-  s.addTable(verTbl, {
-    x: 5.3, y: 2.52, w: 4.15, h: 2.0,
-    colW: [1.7, 1.4, 1.05],
-    border: { pt: 0.5, color: "E2E8F0" },
-    fill: { color: WHITE },
-    rowH: 0.4,
-    fontSize: 10,
-    valign: "middle",
-  });
-
-  s.addText("Replication delay: 13.14 ms  ·  Backward reads: 0", {
-    x: 5.3, y: 4.58, w: 4.15, h: 0.28,
-    fontSize: 10, color: G_DARK, bold: true, margin: 0,
-  });
-  s.addText("Single oplog stream → version can only increase on secondary", {
-    x: 5.3, y: 4.84, w: 4.15, h: 0.26,
-    fontSize: 9.5, color: GRAY, italic: true, margin: 0,
+  // Timeline screenshot — RAW path vs naive path (run 20260608_223921_2038)
+  const RAW_H = 1.8, RAW_W = RAW_H * (2816 / 828);
+  card(s, (10 - (RAW_W + 0.16)) / 2, 3.55, RAW_W + 0.16, RAW_H + 0.16, "0D1117");
+  s.addImage({
+    path: path.join(__dirname, "exp3.png"),
+    x: (10 - RAW_W) / 2, y: 3.63, w: RAW_W, h: RAW_H,
   });
 }
 
 // ═══════════════════════════════════════════════════════════════
-// SLIDE 8 — Experiment 5: Concurrent Writes
+// SLIDE 8 — Experiment 4: Monotonic Reads
+// ═══════════════════════════════════════════════════════════════
+{
+  const s = pres.addSlide();
+  s.background = { color: "F8FAFB" };
+  addTitle(s, "Experiment 4 — Monotonic Reads", "5 chained w=1 updates (v1→v5), then 5 consecutive reads from the same SECONDARY  ·  collection: shipments  ·  DDIA Fig. 5-4");
+
+  s.addText("Status progression pending → in_transit → delivered is written as v1…v5, then the same SECONDARY is read 5 times in a row (144–254 ms after the first write).", {
+    x: 0.4, y: 1.12, w: 9.2, h: 0.45, fontSize: 11, color: INK, margin: 0,
+  });
+
+  // Stats — measured run: log_index 739, operation_id 53a1a26e
+  bigStat(s, 0.4,  1.62, "5 / 5",   "Reads saw v5 — final version", G_DARK);
+  bigStat(s, 2.65, 1.62, "0",       "Backward reads observed", G_DARK);
+  bigStat(s, 4.9,  1.62, "0.58 ms", "Avg replication delay", G_MID);
+  bigStat(s, 7.15, 1.62, "120 ms",  "All 5 writes applied on SECONDARY", AMBER);
+
+  // Key observation — log_index 739, run 20260608_220840_2354
+  s.addShape(pres.shapes.RECTANGLE, {
+    x: 0.4, y: 2.62, w: 9.2, h: 0.85,
+    fill: { color: G_LIGHT }, line: { color: G_DARK, width: 0.8 },
+  });
+  s.addShape(pres.shapes.RECTANGLE, {
+    x: 0.4, y: 2.62, w: 0.07, h: 0.85,
+    fill: { color: G_DARK }, line: { color: G_DARK, width: 0 },
+  });
+  s.addText([
+    { text: "Key observation:  ", options: { bold: true, color: G_DARK } },
+    { text: "All 5 reads — fired 144 ms, 172 ms, 199 ms, 226 ms and 254 ms after the first write — return v5, the final version (versions_written = [1,2,3,4,5], versions_seen = [5,5,5,5,5]). SECONDARY applies a single ordered oplog stream, so its version number can only move forward: monotonic reads hold by construction, with zero backward reads in this run (log_index 739, operation_id 53a1a26e).", options: { color: INK } },
+  ], { x: 0.58, y: 2.62, w: 8.95, h: 0.85, fontSize: 10, valign: "middle", margin: 0 });
+
+  // Timeline screenshot — 5 chained updates + 5 monotonic reads (run 20260608_220840_2354)
+  const MR_H = 1.85, MR_W = MR_H * (2760 / 828);
+  card(s, (10 - (MR_W + 0.16)) / 2, 3.56, MR_W + 0.16, MR_H + 0.16, "0D1117");
+  s.addImage({
+    path: path.join(__dirname, "exp4.png"),
+    x: (10 - MR_W) / 2, y: 3.64, w: MR_W, h: MR_H,
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SLIDE 9 — Experiment 5: Concurrent Writes
 // ═══════════════════════════════════════════════════════════════
 {
   const s = pres.addSlide();
@@ -599,73 +589,37 @@ function bigStat(slide, x, y, number, label, color) {
     x: 0.4, y: 1.12, w: 9.2, h: 0.35, fontSize: 11.5, color: INK, margin: 0,
   });
 
-  // Stats
+  // Stats — measured run: log_index 744-749, operation_id 55fe0297
   bigStat(s, 0.4,  1.58, "6 / 6",    "Visible on secondary", G_DARK);
-  bigStat(s, 2.65, 1.58, "10.7 ms",  "Avg latency — User A", G_MID);
-  bigStat(s, 4.9,  1.58, "11.9 ms",  "Avg latency — User B", G_MID);
-  bigStat(s, 7.15, 1.58, "43.9 ms",  "Oplog batch replication", AMBER);
+  bigStat(s, 2.65, 1.58, "28.5 ms",  "Avg latency — User A", G_MID);
+  bigStat(s, 4.9,  1.58, "28.4 ms",  "Avg latency — User B", G_MID);
+  bigStat(s, 7.15, 1.58, "~7 ms",    "Oplog batch replication", AMBER);
 
-  // log_index order box
+  // Key observation — log_index 744-749, run 20260608_220854_2873
   s.addShape(pres.shapes.RECTANGLE, {
-    x: 0.4, y: 2.52, w: 9.2, h: 0.72,
-    fill: { color: G_LIGHT }, line: { color: G_DARK, width: 0.8 },
-  });
-  s.addText("log_index sequence assigned by PRIMARY:", {
-    x: 0.6, y: 2.56, w: 3.2, h: 0.3, fontSize: 11, bold: true, color: G_DARK, margin: 0,
-  });
-
-  const indices = [696, 697, 698, 699, 700, 701];
-  const labels = ["A1", "B1", "A2", "B2", "A3", "B3"];
-  const colors = [G_DARK, "7C3AED", G_DARK, "7C3AED", G_DARK, "7C3AED"];
-  indices.forEach((idx, i) => {
-    const x = 0.55 + i * 1.5;
-    s.addShape(pres.shapes.ROUNDED_RECTANGLE, {
-      x, y: 2.94, w: 1.25, h: 0.22, fill: { color: colors[i] }, rectRadius: 0.04,
-      line: { color: colors[i], width: 0 },
-    });
-    s.addText(`#${idx}  CW-${labels[i]}`, {
-      x, y: 2.94, w: 1.25, h: 0.22,
-      fontSize: 8.5, color: WHITE, align: "center", valign: "middle", bold: true, fontFace: "Consolas", margin: 0,
-    });
-  });
-
-  // Write results table
-  const cwTbl = [
-    [
-      { text: "Write", options: { bold: true, color: WHITE, fill: { color: G_DARK } } },
-      { text: "log_index", options: { bold: true, color: WHITE, fill: { color: G_DARK } } },
-      { text: "Visible on SECONDARY", options: { bold: true, color: WHITE, fill: { color: G_DARK } } },
-      { text: "Order preserved", options: { bold: true, color: WHITE, fill: { color: G_DARK } } },
-    ],
-    ["CW-A1, CW-A2, CW-A3", "696, 698, 700", { text: "✓  Yes", options: { color: G_DARK, bold: true } }, { text: "✓  Yes", options: { color: G_DARK, bold: true } }],
-    ["CW-B1, CW-B2, CW-B3", "697, 699, 701", { text: "✓  Yes", options: { color: G_DARK, bold: true } }, { text: "✓  Yes", options: { color: G_DARK, bold: true } }],
-  ];
-  s.addTable(cwTbl, {
-    x: 0.4, y: 3.32, w: 9.2, h: 1.1,
-    colW: [3.0, 2.3, 2.3, 1.6],
-    border: { pt: 0.5, color: "E2E8F0" },
-    fill: { color: WHITE },
-    rowH: 0.44,
-    fontSize: 11,
-    valign: "middle",
-  });
-
-  s.addShape(pres.shapes.RECTANGLE, {
-    x: 0.4, y: 4.54, w: 9.2, h: 0.62,
+    x: 0.4, y: 2.62, w: 9.2, h: 0.78,
     fill: { color: G_LIGHT }, line: { color: G_DARK, width: 0.8 },
   });
   s.addShape(pres.shapes.RECTANGLE, {
-    x: 0.4, y: 4.54, w: 0.07, h: 0.62,
+    x: 0.4, y: 2.62, w: 0.07, h: 0.78,
     fill: { color: G_DARK }, line: { color: G_DARK, width: 0 },
   });
   s.addText([
     { text: "Key observation:  ", options: { bold: true, color: G_DARK } },
-    { text: "MongoDB's oplog is append-only. It is impossible for log_index=698 to appear on SECONDARY before log_index=697. Write order is always preserved.", options: { color: INK } },
-  ], { x: 0.58, y: 4.54, w: 8.95, h: 0.62, fontSize: 11, valign: "middle", margin: 0 });
+    { text: "PRIMARY assigned monotonically increasing log_index values 744 → 749 to the 6 concurrent w=1 writes, in true arrival order (A1, B1, B2, A2, B3, A3 — User A and User B interleaved). SECONDARY applied its oplog batch in that exact sequence: 6/6 documents visible only ~7 ms after the burst finished, and the order check confirms log_index order is always preserved — even under true thread-level concurrency.", options: { color: INK } },
+  ], { x: 0.58, y: 2.62, w: 8.95, h: 0.78, fontSize: 10, valign: "middle", margin: 0 });
+
+  // Timeline screenshot — interleaved User A / User B writes (run 20260608_220854_2873)
+  const CW_H = 1.95, CW_W = CW_H * (2616 / 968);
+  card(s, (10 - (CW_W + 0.16)) / 2, 3.5, CW_W + 0.16, CW_H + 0.16, "0D1117");
+  s.addImage({
+    path: path.join(__dirname, "exp5.png"),
+    x: (10 - CW_W) / 2, y: 3.58, w: CW_W, h: CW_H,
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════
-// SLIDE 9 — Testing & Performance
+// SLIDE 10 — Testing & Performance
 // ═══════════════════════════════════════════════════════════════
 {
   const s = pres.addSlide();
@@ -742,7 +696,7 @@ function bigStat(slide, x, y, number, label, color) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// SLIDE 10 — Conclusion
+// SLIDE 11 — Conclusion
 // ═══════════════════════════════════════════════════════════════
 {
   const s = pres.addSlide();
@@ -763,11 +717,11 @@ function bigStat(slide, x, y, number, label, color) {
   });
 
   const conclusions = [
-    ["Synchronous Replication",   "61.8 ms total write — both nodes consistent before client receives ok"],
-    ["Eventual Consistency",      "2/3 reads stale; system converges within 1281 ms (1 s artificial delay)"],
-    ["Read-After-Write",          "PRIMARY read 1.11 ms — always fresh; safety-critical data never served stale"],
-    ["Monotonic Reads",           "Versions [5,5,5,5,5] — oplog ordering makes backward reads impossible"],
-    ["Concurrent Writes",         "log_index 696–701 — write order preserved exactly on SECONDARY"],
+    ["Synchronous Replication",   "166.4 ms total write — both nodes consistent before client receives ok"],
+    ["Eventual Consistency",      "2/3 reads stale; system converges within 1163 ms (1 s artificial delay)"],
+    ["Read-After-Write",          "PRIMARY read 6.5 ms — always fresh; SECONDARY briefly stale (~3.9 ms to catch up)"],
+    ["Monotonic Reads",           "Versions [5,5,5,5,5], 0 backward reads — oplog ordering forbids regression"],
+    ["Concurrent Writes",         "log_index 744–749 — write order preserved exactly on SECONDARY"],
   ];
 
   conclusions.forEach(([title, desc], i) => {
