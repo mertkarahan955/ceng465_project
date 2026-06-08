@@ -1,4 +1,5 @@
-const pptxgen = require("/Users/dogukantopcu/.nvm/versions/node/v22.13.1/lib/node_modules/pptxgenjs");
+const path = require("path");
+const pptxgen = require("pptxgenjs");
 
 const pres = new pptxgen();
 pres.layout = "LAYOUT_16x9";
@@ -246,67 +247,59 @@ function bigStat(slide, x, y, number, label, color) {
   s.background = { color: "F8FAFB" };
   addTitle(s, "Schema Design", "6 Fleet Collections  ·  Shared Document Envelope  ·  version field as reconciliation key");
 
-  // Collections table
-  const headerRow = [
-    { text: "Collection", options: { bold: true, color: WHITE, fill: { color: G_DARK }, fontSize: 11 } },
-    { text: "Key Fields in value", options: { bold: true, color: WHITE, fill: { color: G_DARK }, fontSize: 11 } },
-    { text: "Consistency", options: { bold: true, color: WHITE, fill: { color: G_DARK }, fontSize: 11 } },
-    { text: "Reads From", options: { bold: true, color: WHITE, fill: { color: G_DARK }, fontSize: 11 } },
-  ];
-  const rows = [
-    headerRow,
-    [
-      { text: "vehicles", options: { fontFace: "Consolas", bold: true, color: G_DARK } },
-      { text: "vehicle_id, plate, vehicle_type, max_payload_kg", options: { fontSize: 9.5 } },
-      { text: "Eventual", options: { color: GRAY } },
-      { text: "SECONDARY", options: { color: "2563EB", bold: true } },
-    ],
-    [
-      { text: "drivers", options: { fontFace: "Consolas", bold: true, color: G_DARK } },
-      { text: "driver_id, name, license_class, assigned_vehicle_id", options: { fontSize: 9.5 } },
-      { text: "Eventual", options: { color: GRAY } },
-      { text: "SECONDARY", options: { color: "2563EB", bold: true } },
-    ],
-    [
-      { text: "depots", options: { fontFace: "Consolas", bold: true, color: G_DARK } },
-      { text: "depot_id, name, city, lat, lng, capacity_vehicles", options: { fontSize: 9.5 } },
-      { text: "Eventual", options: { color: GRAY } },
-      { text: "SECONDARY", options: { color: "2563EB", bold: true } },
-    ],
-    [
-      { text: "shipments", options: { fontFace: "Consolas", bold: true, color: G_DARK } },
-      { text: "shipment_id, status (pending→in_transit→delivered), weight_kg", options: { fontSize: 9.5 } },
-      { text: "Monotonic Reads", options: { color: "7C3AED", bold: true } },
-      { text: "SECONDARY", options: { color: "2563EB", bold: true } },
-    ],
-    [
-      { text: "positions", options: { fontFace: "Consolas", bold: true, color: G_DARK } },
-      { text: "vehicle_id, lat, lng, city, speed_kmh  (high-frequency GPS)", options: { fontSize: 9.5 } },
-      { text: "Eventual", options: { color: GRAY } },
-      { text: "SECONDARY", options: { color: "2563EB", bold: true } },
-    ],
-    [
-      { text: "incidents", options: { fontFace: "Consolas", bold: true, color: G_DARK } },
-      { text: "vehicle_id, incident_type, severity, description, resolved", options: { fontSize: 9.5 } },
-      { text: "Read-After-Write", options: { color: "DC2626", bold: true } },
-      { text: "PRIMARY ★", options: { color: G_DARK, bold: true } },
-    ],
-  ];
-  s.addTable(rows, {
-    x: 0.35, y: 1.1, w: 9.3, h: 3.9,
-    colW: [1.5, 4.0, 1.8, 1.5],
-    border: { pt: 0.5, color: "E2E8F0" },
-    fill: { color: WHITE },
-    rowH: 0.58,
-    fontSize: 10.5,
-    valign: "middle",
+  // Left: ER diagram — rendered from the same erd.mmd source used in the report
+  const ERD_W = 3.85, ERD_H = 3.95;
+  card(s, 0.45, 1.15, ERD_W + 0.2, ERD_H + 0.2);
+  s.addImage({
+    path: path.join(__dirname, "erd.png"),
+    x: 0.55, y: 1.25,
+    sizing: { type: "contain", w: ERD_W, h: ERD_H },
+  });
+  s.addText("Figure: ER diagram — vehicles, drivers, depots, shipments, positions, incidents, operation_logs", {
+    x: 0.45, y: 5.34, w: ERD_W + 0.2, h: 0.24,
+    fontSize: 7.5, italic: true, color: GRAY, align: "center", margin: 0,
   });
 
-  // Bottom note
-  s.addText("★  incidents always read from PRIMARY — safety-critical: dispatcher must see own report instantly", {
-    x: 0.35, y: 5.2, w: 9.3, h: 0.28,
-    fontSize: 9.5, color: GRAY, italic: true, margin: 0,
+  // Right: shared envelope key facts
+  s.addText("Shared Document Envelope", {
+    x: 4.85, y: 1.12, w: 4.7, h: 0.32,
+    fontSize: 13, bold: true, color: G_DARK, margin: 0,
   });
+
+  const envelope = [
+    ["key / value",  "Logical id + domain payload (vehicle, shipment, position, …)"],
+    ["version",      "Monotonic counter — the reconciliation key for async (w=1) writes"],
+    ["last_updated", "UTC timestamp set on every insert / update / delete"],
+    ["deleted",      "Soft-delete flag — documents are never hard-removed"],
+  ];
+  envelope.forEach(([field, desc], i) => {
+    const y = 1.5 + i * 0.62;
+    s.addShape(pres.shapes.RECTANGLE, {
+      x: 4.85, y, w: 4.7, h: 0.55,
+      fill: { color: i % 2 === 0 ? G_LIGHT : WHITE },
+      line: { color: "E2E8F0", width: 0.5 },
+    });
+    s.addText(field, {
+      x: 4.95, y: y + 0.05, w: 1.7, h: 0.45,
+      fontSize: 10, bold: true, color: G_DARK, fontFace: "Consolas", valign: "middle", margin: 0,
+    });
+    s.addText(desc, {
+      x: 6.65, y: y + 0.05, w: 2.85, h: 0.45,
+      fontSize: 9, color: INK, valign: "middle", margin: 0,
+    });
+  });
+
+  // Bottom highlight: operation_logs tie-in
+  s.addShape(pres.shapes.RECTANGLE, {
+    x: 4.85, y: 4.08, w: 4.7, h: 1.1,
+    fill: { color: "ECFDF5" }, line: { color: G_DARK, width: 1 },
+  });
+  s.addText([
+    { text: "operation_logs ", options: { bold: true, color: G_DARK, fontFace: "Consolas" } },
+    { text: "links to all 6 fleet collections via ", options: { color: INK } },
+    { text: "target_id", options: { bold: true, color: G_DARK, fontFace: "Consolas" } },
+    { text: " — every insert / update / delete produces exactly one WAL-style entry, used to measure replication delay and drive reconciliation.", options: { color: INK } },
+  ], { x: 4.97, y: 4.16, w: 4.46, h: 0.95, fontSize: 9.5, lineSpacingMultiple: 1.12, margin: 0 });
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -432,11 +425,11 @@ function bigStat(slide, x, y, number, label, color) {
     fontSize: 11.5, color: INK, margin: 0,
   });
 
-  // Stat cards
-  bigStat(s, 0.4,  1.62, "61.8 ms",  "Total write duration", G_DARK);
-  bigStat(s, 2.65, 1.62, "10.6 ms",  "Oplog propagation", G_MID);
-  bigStat(s, 4.9,  1.62, "~52 ms",   "Sync overhead vs async", AMBER);
-  bigStat(s, 7.15, 1.62, "0",        "Stale reads possible", G_DARK);
+  // Stat cards — measured run: log_index 727, operation_id c758eb2e
+  bigStat(s, 0.4,  1.62, "166.4 ms",   "Total write duration", G_DARK);
+  bigStat(s, 2.65, 1.62, "~159.8 ms",  "SECONDARY apply + ACK", G_MID);
+  bigStat(s, 4.9,  1.62, "< 4 ms",     "Each network leg (one-way)", AMBER);
+  bigStat(s, 7.15, 1.62, "0",          "Stale reads possible", G_DARK);
 
   // Key observation box
   s.addShape(pres.shapes.RECTANGLE, {
@@ -449,17 +442,14 @@ function bigStat(slide, x, y, number, label, color) {
   });
   s.addText([
     { text: "Key observation:  ", options: { bold: true, color: G_DARK } },
-    { text: "PRIMARY lane shows a wide processing band blocked on SECONDARY's ACK — this directly visualises the synchronous replication penalty (the price of durability).", options: { color: INK } },
-  ], { x: 0.58, y: 2.58, w: 8.95, h: 0.62, fontSize: 11, valign: "middle", margin: 0 });
+    { text: "PRIMARY lane shows a wide ~160 ms processing band blocked on SECONDARY's ACK — this directly visualises the synchronous replication penalty (the price of durability). The dominant cost is SECONDARY's oplog replay & disk fsync, not the network — each hop is under 4 ms.", options: { color: INK } },
+  ], { x: 0.58, y: 2.58, w: 8.95, h: 0.62, fontSize: 10.5, valign: "middle", margin: 0 });
 
-  // Placeholder for screenshot
-  s.addShape(pres.shapes.RECTANGLE, {
-    x: 0.4, y: 3.32, w: 9.2, h: 1.95,
-    fill: { color: "F1F5F9" }, line: { color: "CBD5E1", width: 1, dashType: "dash" }, shadow: makeShadow(),
-  });
-  s.addText("[  Insert timeline screenshot here  ]", {
-    x: 0.4, y: 3.32, w: 9.2, h: 1.95,
-    fontSize: 14, color: "94A3B8", align: "center", valign: "middle", italic: true, margin: 0,
+  // Timeline screenshot — log_index 727, 166.4 ms total (run 20260608_215639_3045)
+  card(s, 0.4, 3.32, 9.2, 1.95, "0D1117");
+  s.addImage({
+    path: path.join(__dirname, "exp1.png"),
+    x: 1.94, y: 3.32, w: 6.13, h: 1.95,
   });
 }
 
@@ -471,75 +461,38 @@ function bigStat(slide, x, y, number, label, color) {
   s.background = { color: "F8FAFB" };
   addTitle(s, "Experiment 2 — Eventual Consistency", "Asynchronous write + secondaryDelaySecs=1  ·  collection: positions");
 
-  s.addText("Asynchronous update (v1→v2) issued; ok returns without waiting. Three secondary reads at 330 ms, 680 ms, 1281 ms from experiment start.", {
+  s.addText("Asynchronous update (v1→v2) issued with w=1; ok returns in 10.6 ms without waiting for SECONDARY. Three secondary reads at 212 ms, 561 ms, 1163 ms from experiment start, interleaved with PRIMARY reference reads.", {
     x: 0.4, y: 1.12, w: 9.2, h: 0.4,
     fontSize: 11.5, color: INK, margin: 0,
   });
 
-  // Stats
-  bigStat(s, 0.4,  1.62, "127 ms",   "Write returned*", AMBER);
-  bigStat(s, 2.65, 1.62, "2 / 3",    "Stale reads observed", "DC2626");
-  bigStat(s, 4.9,  1.62, "1281 ms",  "Consistency window", AMBER);
+  // Stats — measured run: log_index 728, operation_id 453dc479
+  bigStat(s, 0.4,  1.62, "10.6 ms",  "Write returned (async)", G_MID);
+  bigStat(s, 2.65, 1.62, "2 / 3",    "Stale secondary reads", "DC2626");
+  bigStat(s, 4.9,  1.62, "1163 ms",  "Consistency window", AMBER);
   bigStat(s, 7.15, 1.62, "1 s",      "Artificial delay", GRAY);
 
-  s.addText("* Elevated due to replica-set reconfig overhead; typical async write: 9–12 ms", {
-    x: 0.4, y: 2.5, w: 9.2, h: 0.25,
-    fontSize: 9, color: GRAY, italic: true, margin: 0,
-  });
-
-  // Read timeline table
-  const tbl = [
-    [
-      { text: "Read", options: { bold: true, color: WHITE, fill: { color: G_DARK }, fontSize: 10 } },
-      { text: "Time (ms)", options: { bold: true, color: WHITE, fill: { color: G_DARK }, fontSize: 10 } },
-      { text: "Node", options: { bold: true, color: WHITE, fill: { color: G_DARK }, fontSize: 10 } },
-      { text: "Version seen", options: { bold: true, color: WHITE, fill: { color: G_DARK }, fontSize: 10 } },
-      { text: "Status", options: { bold: true, color: WHITE, fill: { color: G_DARK }, fontSize: 10 } },
-    ],
-    [
-      { text: "#1" },
-      { text: "330 ms" },
-      { text: "SECONDARY", options: { color: "2563EB" } },
-      { text: "v1", options: { color: "DC2626", bold: true } },
-      { text: "⚠ STALE", options: { color: "DC2626", bold: true } },
-    ],
-    [
-      { text: "#2" },
-      { text: "680 ms" },
-      { text: "SECONDARY", options: { color: "2563EB" } },
-      { text: "v1", options: { color: "DC2626", bold: true } },
-      { text: "⚠ STALE", options: { color: "DC2626", bold: true } },
-    ],
-    [
-      { text: "#3" },
-      { text: "1281 ms" },
-      { text: "SECONDARY", options: { color: "2563EB" } },
-      { text: "v2", options: { color: G_DARK, bold: true } },
-      { text: "✓ Consistent", options: { color: G_DARK, bold: true } },
-    ],
-  ];
-  s.addTable(tbl, {
-    x: 0.4, y: 2.82, w: 9.2, h: 1.65,
-    colW: [0.7, 1.5, 2.3, 2.3, 2.4],
-    border: { pt: 0.5, color: "E2E8F0" },
-    fill: { color: WHITE },
-    rowH: 0.41,
-    fontSize: 11,
-    valign: "middle",
-  });
-
+  // Key observation — log_index 728, run 20260608_220453_5283
   s.addShape(pres.shapes.RECTANGLE, {
-    x: 0.4, y: 4.6, w: 9.2, h: 0.6,
+    x: 0.4, y: 2.62, w: 9.2, h: 0.8,
     fill: { color: G_LIGHT }, line: { color: G_DARK, width: 0.8 },
   });
   s.addShape(pres.shapes.RECTANGLE, {
-    x: 0.4, y: 4.6, w: 0.07, h: 0.6,
+    x: 0.4, y: 2.62, w: 0.07, h: 0.8,
     fill: { color: G_DARK }, line: { color: G_DARK, width: 0 },
   });
   s.addText([
     { text: "Key observation:  ", options: { bold: true, color: G_DARK } },
-    { text: "The system is inconsistent for ~1.28 s. On a real WAN this window would be much larger — secondaryDelaySecs=1 makes it observable on LAN.", options: { color: INK } },
-  ], { x: 0.58, y: 4.6, w: 8.95, h: 0.6, fontSize: 11, valign: "middle", margin: 0 });
+    { text: "PRIMARY already serves v2 at 222 ms while SECONDARY still answers v1 at 212 ms and 561 ms — 2 of 3 reads are stale. Only the 3rd secondary read, at 1163 ms, converges to v2: the system is inconsistent for ~1.16 s. secondaryDelaySecs=1 was set on the replica set purely to make this window observable on a LAN (real replication_delay_ms = 252 ms).", options: { color: INK } },
+  ], { x: 0.58, y: 2.62, w: 8.95, h: 0.8, fontSize: 10, valign: "middle", margin: 0 });
+
+  // Timeline screenshot — interleaved PRIMARY/SECONDARY reads (run 20260608_220453_5283)
+  const EC_H = 1.85, EC_W = EC_H * (2514 / 794);
+  card(s, (10 - (EC_W + 0.16)) / 2, 3.56, EC_W + 0.16, EC_H + 0.16, "0D1117");
+  s.addImage({
+    path: path.join(__dirname, "exp2.png"),
+    x: (10 - EC_W) / 2, y: 3.64, w: EC_W, h: EC_H,
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -767,13 +720,13 @@ function bigStat(slide, x, y, number, label, color) {
     colW: [2.8, 1.5],
     border: { pt: 0.5, color: "E2E8F0" },
     fill: { color: WHITE },
-    rowH: 0.42,
-    fontSize: 10.5,
+    rowH: 0.365,
+    fontSize: 10,
     valign: "middle",
   });
 
   s.addText("Dominant cost: SECONDARY disk acknowledgement (~46 ms), not network (<5 ms one-way)", {
-    x: 5.3, y: 4.62, w: 4.3, h: 0.35,
+    x: 5.3, y: 4.5, w: 4.3, h: 0.45,
     fontSize: 9.5, color: GRAY, italic: true, margin: 0,
   });
 
@@ -850,6 +803,6 @@ function bigStat(slide, x, y, number, label, color) {
 }
 
 // ── Save ─────────────────────────────────────────────────────────────────────
-pres.writeFile({ fileName: "/Users/dogukantopcu/Desktop/CENG/CENG465/ceng465_project/presentation/report_presentation.pptx" })
+pres.writeFile({ fileName: path.join(__dirname, "report_presentation.pptx") })
   .then(() => console.log("Saved: report_presentation.pptx"))
   .catch(e => { console.error(e); process.exit(1); });

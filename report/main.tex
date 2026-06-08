@@ -370,19 +370,23 @@ MongoDB does not return \code{ok} until SECONDARY has replayed the oplog entry a
 acknowledged. The client receives the response only after the full round-trip completes.
 
 \textbf{Key observation:} The PRIMARY lane in the timeline shows a wide processing band
-blocked on SECONDARY's ACK. This directly visualises the synchronous replication penalty
---- the price of durability.
+($\approx$160\,ms) blocked on SECONDARY's ACK before the client receives \code{ok}. This
+directly visualises the synchronous replication penalty --- the price of durability ---
+and shows that the dominant cost is SECONDARY's oplog replay and disk acknowledgement,
+not the network hop itself (each one-way network leg is under 4\,ms).
 
 \begin{table}[H]
   \centering
-  \caption{Synchronous Replication --- representative run}
+  \caption{Synchronous Replication --- representative run (\code{log\_index} 727, \code{operation\_id} c758eb2e)}
   \begin{tabular}{lrl}
     \toprule
     Metric & Value & Notes \\
     \midrule
-    Total write duration     & 61.77\,ms  & Client $\to$ PRIMARY $\to$ SECONDARY $\to$ client \\
-    Oplog propagation        & 10.60\,ms  & From PRIMARY commit to SECONDARY apply \\
-    Stale reads possible     & No         & Both nodes at v1 before client receives \code{ok} \\
+    Total write duration       & 166.35\,ms     & Client $\to$ PRIMARY $\to$ SECONDARY $\to$ client (full round trip) \\
+    Network: Primary $\to$ Secondary & 2.76\,ms & One-way oplog transmission \\
+    SECONDARY apply + ACK      & $\approx$159.8\,ms & Dominant cost --- oplog replay \& journal fsync, not network \\
+    Network: Secondary $\to$ Primary & 3.17\,ms & ACK transmitted back to PRIMARY \\
+    Stale reads possible       & No             & \code{version\_after = 1} on both nodes before client receives \code{ok} \\
     \bottomrule
   \end{tabular}
 \end{table}
