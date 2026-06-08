@@ -387,7 +387,12 @@ blocked on SECONDARY's ACK. This directly visualises the synchronous replication
   \end{tabular}
 \end{table}
 
-\placeholder{0.95\textwidth}{7cm}{Timeline: Synchronous Replication --- wide processing band on PRIMARY, SECONDARY ACK before client ok}{exp-sync}
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.95\textwidth]{synchronous.png}
+  \caption{Timeline: Synchronous Replication --- wide processing band on PRIMARY, SECONDARY ACK before client ok}
+  \label{fig:exp-sync}
+\end{figure}
 
 % ─────────────────────────────────────────────────────────────────────────────────
 \subsection{Experiment 2 --- Eventual Consistency (Asynchronous + Artificial Delay)}
@@ -417,7 +422,12 @@ responses and a green arrow when the nodes finally converge.
   \end{tabular}
 \end{table}
 
-\placeholder{0.95\textwidth}{7cm}{Timeline: Eventual Consistency --- stale reads (red) at 330\,ms and 680\,ms, consistent read (green) at 1281\,ms}{exp-eventual}
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.95\textwidth]{eventual_consistency.png}
+  \caption{Timeline: Eventual Consistency --- stale reads (red) at 330\,ms and 680\,ms, consistent read (green) at 1281\,ms}
+  \label{fig:exp-eventual}
+\end{figure}
 
 % ─────────────────────────────────────────────────────────────────────────────────
 \subsection{Experiment 3 --- Read-After-Write}
@@ -446,7 +456,12 @@ demonstrating the Read-After-Write anomaly and why safety-critical data in the
   \end{tabular}
 \end{table}
 
-\placeholder{0.95\textwidth}{7cm}{Timeline: Read-After-Write --- PRIMARY read (green, 1.11\,ms, always fresh); SECONDARY read potentially stale before oplog arrives}{exp-raw}
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.95\textwidth]{read_after_write.png}
+  \caption{Timeline: Read-After-Write --- PRIMARY read (green, 1.11\,ms, always fresh); SECONDARY read potentially stale before oplog arrives}
+  \label{fig:exp-raw}
+\end{figure}
 
 % ─────────────────────────────────────────────────────────────────────────────────
 \subsection{Experiment 4 --- Monotonic Reads}
@@ -478,7 +493,12 @@ stream can never apply entries out of order.
   \end{tabular}
 \end{table}
 
-\placeholder{0.95\textwidth}{7cm}{Timeline: Monotonic Reads --- 5 writes v1-v5 on PRIMARY, 5 sequential SECONDARY reads returning non-decreasing versions}{exp-monotonic}
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.95\textwidth]{monotonic_reads.png}
+  \caption{Timeline: Monotonic Reads --- 5 writes v1-v5 on PRIMARY, 5 sequential SECONDARY reads returning non-decreasing versions}
+  \label{fig:exp-monotonic}
+\end{figure}
 
 % ─────────────────────────────────────────────────────────────────────────────────
 \subsection{Experiment 5 --- Concurrent Writes: Propagation Order}
@@ -511,7 +531,12 @@ before \code{log\_index=697}.
   \end{tabular}
 \end{table}
 
-\placeholder{0.95\textwidth}{7cm}{Timeline: Concurrent Writes --- User A and B fire 6 simultaneous inserts; PRIMARY assigns log\_index 696-701; all 6 visible on SECONDARY in correct order}{exp-concurrent}
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.95\textwidth]{concurrent_writes.png}
+  \caption{Timeline: Concurrent Writes --- User A and B fire 6 simultaneous inserts; PRIMARY assigns log\_index 696-701; all 6 visible on SECONDARY in correct order}
+  \label{fig:exp-concurrent}
+\end{figure}
 
 \subsection{Experiment Summary}
 
@@ -581,23 +606,17 @@ detection:
 \begin{figure}[H]
   \centering
   \begin{subfigure}[b]{0.32\textwidth}
-    \fbox{\begin{minipage}[c][3.5cm][c]{\textwidth}
-      \centering\small\textcolor{gray}{\textit{[Synchronous write rejected --- secondary offline]}}
-    \end{minipage}}
+    \includegraphics[width=\textwidth]{failure_a.png}
     \caption{Synchronous write rejected}
   \end{subfigure}
   \hfill
   \begin{subfigure}[b]{0.32\textwidth}
-    \fbox{\begin{minipage}[c][3.5cm][c]{\textwidth}
-      \centering\small\textcolor{gray}{\textit{[Async write accepted, log pending\_follower]}}
-    \end{minipage}}
+    \includegraphics[width=\textwidth]{failure_b.png}
     \caption{Async write accepted, pending}
   \end{subfigure}
   \hfill
   \begin{subfigure}[b]{0.32\textwidth}
-    \fbox{\begin{minipage}[c][3.5cm][c]{\textwidth}
-      \centering\small\textcolor{gray}{\textit{[secondary back, log visible\_on\_follower]}}
-    \end{minipage}}
+    \includegraphics[width=\textwidth]{failure_c.png}
     \caption{Recovery complete}
   \end{subfigure}
   \caption{Secondary failure and recovery sequence.}
