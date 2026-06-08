@@ -10,7 +10,6 @@ from .common import (
     get_log,
     measure_net_one_way,
     ms,
-    req_resp_events,
     safe_lat,
     serialize_log,
 )
@@ -62,27 +61,18 @@ def run_sync_replication():
     sec_ack_t   = max(ok_depart - net_s, sec_arrive + 0.5)
 
     events = [
-        # Write request: N_/ (N=network)  (client → primary)
-        *req_resp_events(
-            0, d, net_p,
-            "client", "primary",
-            "write (w=majority)", "write",
-            f"ok ({d:.1f} ms)", "ok",
-            req_meta={
-                "collection": "positions",
-                "db_action": "insert",
-                "document_id": str(item_id),
-                "version": "v1",
-                "data": position_value,
-            },
-            resp_meta={
-                "collection": "positions",
-                "db_action": "write_ack",
-                "document_id": str(item_id),
-                "version": "v1",
-                "data": position_value,
-            },
-        ),
+        # Write request: client → primary
+        {"t_ms": 0, "latency_ms": safe_lat(net_p),
+         "from": "client", "to": "primary",
+         "label": "write (w=majority)", "type": "write",
+         "collection": "positions", "db_action": "insert",
+         "document_id": str(item_id), "version": "v1", "data": position_value},
+        # ok response: primary → client (departs only after ACK received)
+        {"t_ms": ok_depart, "latency_ms": safe_lat(d - ok_depart),
+         "from": "primary", "to": "client",
+         "label": f"ok ({d:.1f} ms)", "type": "ok",
+         "collection": "positions", "db_action": "write_ack",
+         "document_id": str(item_id), "version": "v1", "data": position_value},
         # Oplog: primary → secondary  (arrives quickly, secondary processes)
         {"t_ms": oplog_start, "latency_ms": safe_lat(sec_arrive - oplog_start),
          "from": "primary", "to": "secondary",

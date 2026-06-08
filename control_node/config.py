@@ -12,8 +12,8 @@ POLL_TIMEOUT_MS = 5000
 WRITE_TIMEOUT_MS = 5000
 
 # Keep dashboard reads responsive when the secondary is intentionally down.
-SERVER_SELECTION_TIMEOUT_MS = 800
-CONNECT_TIMEOUT_MS = 800
+SERVER_SELECTION_TIMEOUT_MS = 5000
+CONNECT_TIMEOUT_MS = 5000
 SOCKET_TIMEOUT_MS = 1200
 
 # Background worker cadence for completing w=1 pending follower checks.

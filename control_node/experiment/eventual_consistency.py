@@ -62,7 +62,16 @@ def _set_secondary_delay(delay_secs: int) -> int:
     cfg["members"][sec_idx]["priority"] = 0
     cfg["version"] = cfg.get("version", 1) + 1
     admin.command("replSetReconfig", cfg)
-    time.sleep(0.5)
+    # Wait for primary to become writable again after reconfig.
+    deadline = time.time() + 10
+    while time.time() < deadline:
+        try:
+            info = db.get_primary().client.admin.command("hello")
+            if info.get("isWritablePrimary"):
+                break
+        except Exception:
+            pass
+        time.sleep(0.2)
     return prev
 
 
