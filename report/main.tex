@@ -106,14 +106,6 @@
   \end{tabular}
 
   \vfill
-  \begin{tikzpicture}
-    \node[draw=mongogreen, rounded corners, fill=mongogreen!10,
-          minimum width=8cm, minimum height=1.2cm, align=center, font=\small] {
-      \textbf{Machines:}\quad
-      PRIMARY \quad|\quad
-      SECONDARY
-    };
-  \end{tikzpicture}
 \end{titlepage}
 
 \tableofcontents
@@ -135,16 +127,19 @@ multiple consistency models with realistic data shapes.
 
 The main goals of the project are:
 
+\begin{sloppypar}
 \begin{enumerate}
   \item Deploy a two-node MongoDB replica set (\code{rs0}) on real hardware with no
         containers or simulated latency.
-  \item Implement two replication modes --- synchronous (PRIMARY waits for SECONDARY ACK)
-        and asynchronous (PRIMARY returns immediately) --- with a measurable operation log
-        that records \code{leader\_write\_time}, \code{follower\_visible\_time}, and
-        \code{replication\_delay\_ms} per write.
+  \item Implement two replication modes: synchronous (PRIMARY blocks until
+        SECONDARY ACK) and asynchronous (PRIMARY returns immediately).
+        A measurable operation log records \code{leader\_write\_time},
+        \code{follower\_visible\_time}, and \code{replication\_delay\_ms}
+        per write.
   \item Demonstrate five consistency scenarios via interactive DDIA-style timeline
         diagrams on an experiment dashboard.
 \end{enumerate}
+\end{sloppypar}
 
 % ═══════════════════════════════════════════════════════════════════════════════════
 \section{System Architecture}
@@ -378,7 +373,7 @@ not the network hop itself (each one-way network leg is under 4\,ms).
 \begin{table}[H]
   \centering
   \caption{Synchronous Replication --- representative run (\code{log\_index} 727, \code{operation\_id} c758eb2e)}
-  \begin{tabular}{lrl}
+  \begin{tabularx}{\textwidth}{lrX}
     \toprule
     Metric & Value & Notes \\
     \midrule
@@ -388,7 +383,7 @@ not the network hop itself (each one-way network leg is under 4\,ms).
     Network: Secondary $\to$ Primary & 3.17\,ms & ACK transmitted back to PRIMARY \\
     Stale reads possible       & No             & \code{version\_after = 1} on both nodes before client receives \code{ok} \\
     \bottomrule
-  \end{tabular}
+  \end{tabularx}
 \end{table}
 
 \begin{figure}[H]
@@ -414,7 +409,7 @@ responses and a green arrow when the nodes finally converge.
 \begin{table}[H]
   \centering
   \caption{Eventual Consistency --- representative run}
-  \begin{tabular}{lrl}
+  \begin{tabularx}{\textwidth}{lrX}
     \toprule
     Metric & Value & Notes \\
     \midrule
@@ -423,7 +418,7 @@ responses and a green arrow when the nodes finally converge.
     Consistency window      & 1281\,ms   & Time from experiment start until secondary converged to v2 \\
     Artificial delay        & 1\,s       & \code{secondaryDelaySecs=1} \\
     \bottomrule
-  \end{tabular}
+  \end{tabularx}
 \end{table}
 
 \begin{figure}[H]
@@ -449,7 +444,7 @@ demonstrating the Read-After-Write anomaly and why safety-critical data in the
 \begin{table}[H]
   \centering
   \caption{Read-After-Write --- representative run}
-  \begin{tabular}{lrl}
+  \begin{tabularx}{\textwidth}{lrX}
     \toprule
     Metric & Value & Notes \\
     \midrule
@@ -457,7 +452,7 @@ demonstrating the Read-After-Write anomaly and why safety-critical data in the
     PRIMARY read latency    & 1.11\,ms   & Always returns the new document \\
     Secondary sync time     & 5.0\,ms    & How quickly SECONDARY caught up on LAN \\
     \bottomrule
-  \end{tabular}
+  \end{tabularx}
 \end{table}
 
 \begin{figure}[H]
@@ -485,7 +480,7 @@ stream can never apply entries out of order.
 \begin{table}[H]
   \centering
   \caption{Monotonic Reads --- representative run}
-  \begin{tabular}{lrl}
+  \begin{tabularx}{\textwidth}{lrX}
     \toprule
     Metric & Value & Notes \\
     \midrule
@@ -494,7 +489,7 @@ stream can never apply entries out of order.
     Backward reads             & 0                   & Monotonicity never violated \\
     Replication delay          & 13.14\,ms           & Time for v5 to reach SECONDARY \\
     \bottomrule
-  \end{tabular}
+  \end{tabularx}
 \end{table}
 
 \begin{figure}[H]
@@ -521,7 +516,7 @@ before \code{log\_index=697}.
 \begin{table}[H]
   \centering
   \caption{Concurrent Writes --- representative run}
-  \begin{tabular}{lrl}
+  \begin{tabularx}{\textwidth}{lrX}
     \toprule
     Metric & Value & Notes \\
     \midrule
@@ -532,7 +527,7 @@ before \code{log\_index=697}.
     Oplog batch replication & 43.92\,ms   & All 6 applied on SECONDARY \\
     log\_index sequence   & 696--701      & Strictly monotonic; order preserved \\
     \bottomrule
-  \end{tabular}
+  \end{tabularx}
 \end{table}
 
 \begin{figure}[H]
@@ -647,7 +642,7 @@ detection:
 \begin{table}[H]
   \centering
   \caption{Measured network and replication latencies (LAN)}
-  \begin{tabular}{lrl}
+  \begin{tabularx}{\textwidth}{lrX}
     \toprule
     Metric & Typical & Notes \\
     \midrule
@@ -658,7 +653,7 @@ detection:
     Oplog propagation (no delay)  & 10--44\,ms     & varies with batch size \\
     Oplog propagation (1\,s delay)& 326--1281\,ms  & with \code{secondaryDelaySecs=1} \\
     \bottomrule
-  \end{tabular}
+  \end{tabularx}
 \end{table}
 
 The synchronous replication overhead over asynchronous is $\approx$52\,ms on this LAN.
@@ -750,7 +745,7 @@ incidents) and eventually-consistent (GPS heatmap on positions) workloads simult
 \begin{table}[H]
   \centering
   \caption{Key constants from \texttt{config.py}}
-  \begin{tabular}{lrl}
+  \begin{tabularx}{\textwidth}{lrX}
     \toprule
     Constant & Value & Purpose \\
     \midrule
@@ -760,7 +755,7 @@ incidents) and eventually-consistent (GPS heatmap on positions) workloads simult
     \code{HEALTHCHECK\_INTERVAL\_MS} & 1\,000\,ms & Secondary health check cadence \\
     \code{SERVER\_SELECTION\_TIMEOUT\_MS} & 800\,ms & MongoDB driver timeout \\
     \bottomrule
-  \end{tabular}
+  \end{tabularx}
 \end{table}
 
 \end{document}
