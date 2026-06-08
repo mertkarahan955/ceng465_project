@@ -229,6 +229,22 @@ any accumulated pending entries via batch reconciliation.
 \section{Schema Design}
 % ═══════════════════════════════════════════════════════════════════════════════════
 
+\subsection{Entity-Relationship Diagram}
+
+Figure~\ref{fig:erd} shows the logical relationships between the seven MongoDB collections
+used in this project. Although MongoDB is document-oriented rather than relational, the
+domain has clear foreign-key-style references that an ERD captures well.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{erd.png}
+  \caption{ERD of the fleet management schema. Arrows denote document-level references
+           (stored as string IDs inside the \texttt{value} object). All collections share
+           the common envelope fields (\texttt{version}, \texttt{deleted}, etc.) described
+           in Table~\ref{tab:envelope}.}
+  \label{fig:erd}
+\end{figure}
+
 \subsection{Document Envelope}
 
 All six fleet collections share a common schema envelope. Every document carries the

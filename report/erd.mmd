@@ -1,0 +1,117 @@
+erDiagram
+    VEHICLES {
+        ObjectId _id PK
+        string key
+        string vehicle_id
+        string plate
+        string vehicle_type
+        int max_payload_kg
+        int manufacture_year
+        bool is_active
+        int version
+        datetime last_updated
+        bool deleted
+    }
+
+    DRIVERS {
+        ObjectId _id PK
+        string key
+        string driver_id
+        string name
+        string license_class
+        string phone
+        string assigned_vehicle_id FK
+        int version
+        datetime last_updated
+        bool deleted
+    }
+
+    DEPOTS {
+        ObjectId _id PK
+        string key
+        string depot_id
+        string name
+        string city
+        float lat
+        float lng
+        int capacity_vehicles
+        int version
+        datetime last_updated
+        bool deleted
+    }
+
+    SHIPMENTS {
+        ObjectId _id PK
+        string key
+        string shipment_id
+        string origin_depot FK
+        string destination_depot FK
+        string customer
+        float weight_kg
+        int package_count
+        string status
+        string assigned_vehicle_id FK
+        int version
+        datetime last_updated
+        bool deleted
+    }
+
+    POSITIONS {
+        ObjectId _id PK
+        string key
+        string vehicle_id FK
+        float lat
+        float lng
+        string city
+        string district
+        float speed_kmh
+        int version
+        datetime last_updated
+        bool deleted
+    }
+
+    INCIDENTS {
+        ObjectId _id PK
+        string key
+        string vehicle_id FK
+        string incident_type
+        string severity
+        string description
+        float lat
+        float lng
+        bool resolved
+        int version
+        datetime last_updated
+        bool deleted
+    }
+
+    OPERATION_LOGS {
+        ObjectId _id PK
+        string operation_id
+        int leader_term
+        int log_index
+        string operation_type
+        string target_collection
+        ObjectId target_id FK
+        datetime leader_write_time
+        datetime follower_visible_time
+        float replication_delay_ms
+        int version_before
+        int version_after
+        string client_id
+        string write_concern
+        string status
+    }
+
+    VEHICLES ||--o{ DRIVERS : "assigned to"
+    VEHICLES ||--o{ SHIPMENTS : "carries"
+    VEHICLES ||--o{ POSITIONS : "has"
+    VEHICLES ||--o{ INCIDENTS : "has"
+    DEPOTS ||--o{ SHIPMENTS : "origin"
+    DEPOTS ||--o{ SHIPMENTS : "destination"
+    VEHICLES ||--o{ OPERATION_LOGS : "tracked by"
+    DRIVERS ||--o{ OPERATION_LOGS : "tracked by"
+    DEPOTS ||--o{ OPERATION_LOGS : "tracked by"
+    SHIPMENTS ||--o{ OPERATION_LOGS : "tracked by"
+    POSITIONS ||--o{ OPERATION_LOGS : "tracked by"
+    INCIDENTS ||--o{ OPERATION_LOGS : "tracked by"
