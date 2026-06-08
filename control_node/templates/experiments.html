@@ -1042,11 +1042,15 @@ function drawTimeline(containerId, events, actorsCfg, actorOrder) {
     actorY[e.to]   !== undefined
   );
 
-  // Collect all time points
+  // Collect all time points — round to 0.1 ms to avoid IEEE-754 drift
+  // causing t_ms + latency_ms to land in a different slot than the matching
+  // event's t_ms (which would force an unwanted 60 px minimum gap between
+  // two logically simultaneous points).
+  const snap = t => Math.round(t * 10) / 10;
   const allT = [];
   arrowEvents.forEach(e => {
-    allT.push(e.t_ms);
-    allT.push(e.t_ms + (e.latency_ms || 5));
+    allT.push(snap(e.t_ms));
+    allT.push(snap(e.t_ms + (e.latency_ms || 5)));
   });
 
   const maxT = Math.max(...allT, 1);
@@ -1054,7 +1058,7 @@ function drawTimeline(containerId, events, actorsCfg, actorOrder) {
   const MIN_SLOT_PX = 60;
   const rawTimes    = [...new Set(allT)].sort((a, b) => a - b);
   const slotX       = buildSlots(rawTimes, CHART_W, MIN_SLOT_PX);
-  const toPx        = t => LAB_W + interpolateSlot(t, rawTimes, slotX);
+  const toPx        = t => LAB_W + interpolateSlot(snap(t), rawTimes, slotX);
 
   let defs = '';
   let body = '';
@@ -1167,24 +1171,37 @@ function drawTimeline(containerId, events, actorsCfg, actorOrder) {
 
   const usedReqIdx = new Set();
   responses.forEach(resp => {
-    // Find the most-recent matching request: went from resp.to → resp.from
-    // and arrived at resp.from before resp departs (with 2ms tolerance)
+    // If both sides share a pair_id (set by req_resp_events), match exactly.
+    // Otherwise fall back to timing-based heuristic (closest arriving request).
     const arrivalCutoff = resp.t_ms + 2;
-    const candidates = requests
-      .map((req, idx) => ({ req, idx }))
-      .filter(({ req, idx }) =>
-        !usedReqIdx.has(idx) &&
-        req.to   === resp.from &&
-        req.from === resp.to  &&
-        (req.t_ms + (req.latency_ms || 0)) <= arrivalCutoff
-      )
-      .sort((a, b) =>
-        (b.req.t_ms + (b.req.latency_ms || 0)) -
-        (a.req.t_ms + (a.req.latency_ms || 0))
-      );
+    let matched = null;
 
-    if (candidates.length === 0) return;
-    const { req, idx } = candidates[0];
+    if (resp.pair_id != null) {
+      const idx = requests.findIndex((req, i) =>
+        !usedReqIdx.has(i) && req.pair_id === resp.pair_id
+      );
+      if (idx !== -1) matched = { req: requests[idx], idx };
+    }
+
+    if (!matched) {
+      const candidates = requests
+        .map((req, idx) => ({ req, idx }))
+        .filter(({ req, idx }) =>
+          !usedReqIdx.has(idx) &&
+          req.to   === resp.from &&
+          req.from === resp.to  &&
+          (req.t_ms + (req.latency_ms || 0)) <= arrivalCutoff
+        )
+        .sort((a, b) => {
+          const aDelta = resp.t_ms - (a.req.t_ms + (a.req.latency_ms || 0));
+          const bDelta = resp.t_ms - (b.req.t_ms + (b.req.latency_ms || 0));
+          return aDelta - bDelta;
+        });
+      if (candidates.length > 0) matched = candidates[0];
+    }
+
+    if (!matched) return;
+    const { req, idx } = matched;
     usedReqIdx.add(idx);
 
     const actor  = resp.from; // the machine that handled the request
