@@ -1,6 +1,6 @@
 # Fdb version 4
-["pdflatex"] 1780947654.65789 "/Users/dogukantopcu/Desktop/CENG/CENG465/ceng465_project/report/main.tex" "main.pdf" "main" 1780947657.64557 0
-  "/Users/dogukantopcu/Desktop/CENG/CENG465/ceng465_project/report/main.tex" 1780947654.3218 40657 7a4406ac5a737c25b2287b89eedb41e4 ""
+["pdflatex"] 1780947697.33316 "/Users/dogukantopcu/Desktop/CENG/CENG465/ceng465_project/report/main.tex" "main.pdf" "main" 1780947700.24367 0
+  "/Users/dogukantopcu/Desktop/CENG/CENG465/ceng465_project/report/main.tex" 1780947694.05029 41178 8dbf6761d70b576c5a4b2d9929ee1cfa ""
   "/Users/dogukantopcu/Library/texlive/2026basic/texmf-var/fonts/pk/ljfour/jknappen/ec/ecbx1095.600pk" 1780756399.05384 28952 201c3f171bce215a3e8428dfe7cf2ecc ""
   "/Users/dogukantopcu/Library/texlive/2026basic/texmf-var/fonts/pk/ljfour/jknappen/ec/ecbx1200.600pk" 1773618088.99308 31928 ee84ebf2f3a0b6e3f1b54a084a4d11da ""
   "/Users/dogukantopcu/Library/texlive/2026basic/texmf-var/fonts/pk/ljfour/jknappen/ec/ecbx1440.600pk" 1773618090.9374 40112 a22c95437c3aea4ef98b5ed225daede7 ""
@@ -196,10 +196,10 @@
   "failure_a.png" 1780947539.16442 954667 ce089123ee84063cbf91d03366db2c7a ""
   "failure_b.png" 1780947539.1682 945601 8f85bb3002fc585ad9751f013ff15ded ""
   "failure_c.png" 1780947539.1713 931791 8258cdb9a14cbdc00c11cbedd2088d8c ""
-  "main.aux" 1780947657.55234 9692 0ea53c6a23fc832c9a1abf22a1a0004e "pdflatex"
-  "main.out" 1780947657.55358 4158 93f2d8285d03d49afd7e251bd08b5f5b "pdflatex"
-  "main.tex" 1780947654.3218 40657 7a4406ac5a737c25b2287b89eedb41e4 ""
-  "main.toc" 1780947657.5538 2080 2a5e50c2aba7fc2a2aa7261b80f2d096 "pdflatex"
+  "main.aux" 1780947700.15498 9772 2a8c31274240ae2841ae27ea9e54f0bb "pdflatex"
+  "main.out" 1780947700.15619 4158 93f2d8285d03d49afd7e251bd08b5f5b "pdflatex"
+  "main.tex" 1780947694.05029 41178 8dbf6761d70b576c5a4b2d9929ee1cfa ""
+  "main.toc" 1780947700.15643 2081 e1c78b693d9aa761f3b188e8c5052028 "pdflatex"
   "monotonic_reads.png" 1780946126.06269 242815 752e9f62a17ccd78381615496a42fc34 ""
   "read_after_write.png" 1780946126.05982 150366 3d8e01bba1cdad6a33d3d100bb0bdd61 ""
   "synchronous.png" 1780946126.05443 84169 6590189b7a4a6da6dbe32e2396b3e3ce ""

@@ -589,7 +589,20 @@ start to ensure a clean state.
   \end{tabularx}
 \end{table}
 
-\placeholder{0.85\textwidth}{5cm}{Terminal output of test\_replication.py --- all 7 tests PASS}{test-output}
+\begin{figure}[H]
+  \centering
+  \begin{subfigure}[t]{0.48\textwidth}
+    \includegraphics[width=\textwidth]{test_output_1.png}
+    \caption{Test run output}
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[t]{0.48\textwidth}
+    \includegraphics[width=\textwidth]{test_output_2.png}
+    \caption{Test summary}
+  \end{subfigure}
+  \caption{Terminal output of \texttt{test\_replication.py} --- all 7 tests PASS}
+  \label{fig:test-output}
+\end{figure}
 
 \subsection{Manual Secondary Failure Test}
 

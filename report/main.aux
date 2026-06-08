@@ -29,41 +29,41 @@
 \newlabel{tab:oplog}{{4}{6}{\texttt {operation\_logs} document schema}{table.caption.6}{}}
 \@writefile{toc}{\contentsline {section}{\numberline {5}Experiments}{6}{section.5}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Experiment 1 --- Synchronous Replication}{6}{subsection.5.1}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces Synchronous Replication --- representative run}}{7}{table.caption.7}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces Synchronous Replication --- representative run (\texttt  {\small  log\_index} 727, \texttt  {\small  operation\_id} c758eb2e)}}{7}{table.caption.7}\protected@file@percent }
 \@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Timeline: Synchronous Replication --- wide processing band on PRIMARY, SECONDARY ACK before client ok}}{7}{figure.caption.8}\protected@file@percent }
 \newlabel{fig:exp-sync}{{3}{7}{Timeline: Synchronous Replication --- wide processing band on PRIMARY, SECONDARY ACK before client ok}{figure.caption.8}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {5.2}Experiment 2 --- Eventual Consistency (Asynchronous + Artificial Delay)}{7}{subsection.5.2}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {6}{\ignorespaces Eventual Consistency --- representative run}}{7}{table.caption.9}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {6}{\ignorespaces Eventual Consistency --- representative run}}{8}{table.caption.9}\protected@file@percent }
 \@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Timeline: Eventual Consistency --- stale reads (red) at 330\,ms and 680\,ms, consistent read (green) at 1281\,ms}}{8}{figure.caption.10}\protected@file@percent }
 \newlabel{fig:exp-eventual}{{4}{8}{Timeline: Eventual Consistency --- stale reads (red) at 330\,ms and 680\,ms, consistent read (green) at 1281\,ms}{figure.caption.10}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {5.3}Experiment 3 --- Read-After-Write}{8}{subsection.5.3}\protected@file@percent }
 \@writefile{lot}{\contentsline {table}{\numberline {7}{\ignorespaces Read-After-Write --- representative run}}{8}{table.caption.11}\protected@file@percent }
-\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces Timeline: Read-After-Write --- PRIMARY read (green, 1.11\,ms, always fresh); SECONDARY read potentially stale before oplog arrives}}{8}{figure.caption.12}\protected@file@percent }
-\newlabel{fig:exp-raw}{{5}{8}{Timeline: Read-After-Write --- PRIMARY read (green, 1.11\,ms, always fresh); SECONDARY read potentially stale before oplog arrives}{figure.caption.12}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.4}Experiment 4 --- Monotonic Reads}{8}{subsection.5.4}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces Timeline: Read-After-Write --- PRIMARY read (green, 1.11\,ms, always fresh); SECONDARY read potentially stale before oplog arrives}}{9}{figure.caption.12}\protected@file@percent }
+\newlabel{fig:exp-raw}{{5}{9}{Timeline: Read-After-Write --- PRIMARY read (green, 1.11\,ms, always fresh); SECONDARY read potentially stale before oplog arrives}{figure.caption.12}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.4}Experiment 4 --- Monotonic Reads}{9}{subsection.5.4}\protected@file@percent }
 \@writefile{lot}{\contentsline {table}{\numberline {8}{\ignorespaces Monotonic Reads --- representative run}}{9}{table.caption.13}\protected@file@percent }
 \@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces Timeline: Monotonic Reads --- 5 writes v1-v5 on PRIMARY, 5 sequential SECONDARY reads returning non-decreasing versions}}{9}{figure.caption.14}\protected@file@percent }
 \newlabel{fig:exp-monotonic}{{6}{9}{Timeline: Monotonic Reads --- 5 writes v1-v5 on PRIMARY, 5 sequential SECONDARY reads returning non-decreasing versions}{figure.caption.14}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.5}Experiment 5 --- Concurrent Writes: Propagation Order}{9}{subsection.5.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.5}Experiment 5 --- Concurrent Writes: Propagation Order}{10}{subsection.5.5}\protected@file@percent }
 \@writefile{lot}{\contentsline {table}{\numberline {9}{\ignorespaces Concurrent Writes --- representative run}}{10}{table.caption.15}\protected@file@percent }
 \@writefile{lof}{\contentsline {figure}{\numberline {7}{\ignorespaces Timeline: Concurrent Writes --- User A and B fire 6 simultaneous inserts; PRIMARY assigns log\_index 696-701; all 6 visible on SECONDARY in correct order}}{10}{figure.caption.16}\protected@file@percent }
 \newlabel{fig:exp-concurrent}{{7}{10}{Timeline: Concurrent Writes --- User A and B fire 6 simultaneous inserts; PRIMARY assigns log\_index 696-701; all 6 visible on SECONDARY in correct order}{figure.caption.16}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.6}Experiment Summary}{10}{subsection.5.6}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {10}{\ignorespaces All five experiments at a glance}}{10}{table.caption.17}\protected@file@percent }
-\newlabel{tab:summary}{{10}{10}{All five experiments at a glance}{table.caption.17}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {6}Testing}{10}{section.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.6}Experiment Summary}{11}{subsection.5.6}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {10}{\ignorespaces All five experiments at a glance}}{11}{table.caption.17}\protected@file@percent }
+\newlabel{tab:summary}{{10}{11}{All five experiments at a glance}{table.caption.17}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {6}Testing}{11}{section.6}\protected@file@percent }
 \@writefile{lot}{\contentsline {table}{\numberline {11}{\ignorespaces Automated test suite}}{11}{table.caption.18}\protected@file@percent }
-\@writefile{lof}{\contentsline {figure}{\numberline {8}{\ignorespaces Terminal output of test\_replication.py --- all 7 tests PASS}}{11}{figure.caption.19}\protected@file@percent }
-\newlabel{fig:test-output}{{8}{11}{Terminal output of test\_replication.py --- all 7 tests PASS}{figure.caption.19}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {6.1}Manual Secondary Failure Test}{11}{subsection.6.1}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {8}{\ignorespaces Terminal output of \texttt  {test\_replication.py} --- all 7 tests PASS}}{12}{figure.caption.19}\protected@file@percent }
+\newlabel{fig:test-output}{{8}{12}{Terminal output of \texttt {test\_replication.py} --- all 7 tests PASS}{figure.caption.19}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.1}Manual Secondary Failure Test}{12}{subsection.6.1}\protected@file@percent }
 \@writefile{lof}{\contentsline {figure}{\numberline {9}{\ignorespaces Secondary failure and recovery sequence.}}{12}{figure.caption.20}\protected@file@percent }
 \newlabel{fig:failure-sequence}{{9}{12}{Secondary failure and recovery sequence}{figure.caption.20}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {7}Performance Measurements}{12}{section.7}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {12}{\ignorespaces Measured network and replication latencies (LAN)}}{12}{table.caption.21}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {8}Discussion}{12}{section.8}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {7}Performance Measurements}{13}{section.7}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {12}{\ignorespaces Measured network and replication latencies (LAN)}}{13}{table.caption.21}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {8}Discussion}{13}{section.8}\protected@file@percent }
 \@writefile{toc}{\contentsline {section}{\numberline {9}Conclusion}{13}{section.9}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {A}Repository Structure}{13}{appendix.A}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {13}{\ignorespaces Key source files}}{13}{table.caption.22}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {A}Repository Structure}{14}{appendix.A}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {13}{\ignorespaces Key source files}}{14}{table.caption.22}\protected@file@percent }
 \@writefile{toc}{\contentsline {section}{\numberline {B}Configuration Constants}{14}{appendix.B}\protected@file@percent }
 \@writefile{lot}{\contentsline {table}{\numberline {14}{\ignorespaces Key constants from \texttt  {config.py}}}{14}{table.caption.23}\protected@file@percent }
 \gdef \@abspage@last{15}
