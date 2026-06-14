@@ -28,8 +28,8 @@ import operations
 from .common import (
     measure_net_one_way,
     ms,
+    replicate_ack_events,
     req_resp_events,
-    safe_lat,
     serialize_log,
     write_concern,
 )
@@ -171,51 +171,33 @@ def run_concurrent_writes():
     events = []
 
     # Phase A: each user's writes on their own lane
-    for w in results_a:
-        _vdata = {"vehicle_id": w["vid"], "type": "truck",
-                  "capacity": 5000 + (w["seq"] - 1) * 100, "year": 2020 + (w["seq"] - 1)}
-        events += req_resp_events(
-            w["t_send"], w["t_recv"], net_p,
-            "user_a", "primary",
-            f"write {w['vid']} (w=1)", "write",
-            f"ok — A{w['seq']}", "ok",
-            req_meta={"collection": "vehicles", "db_action": "insert", "data": _vdata},
-            resp_meta={"collection": "vehicles", "db_action": "insert",
-                       "document_id": str(w["id"]), "version": 1, "data": _vdata},
-        )
-    for w in results_b:
-        _vdata = {"vehicle_id": w["vid"], "type": "truck",
-                  "capacity": 5000 + (w["seq"] - 1) * 100, "year": 2020 + (w["seq"] - 1)}
-        events += req_resp_events(
-            w["t_send"], w["t_recv"], net_p,
-            "user_b", "primary",
-            f"write {w['vid']} (w=1)", "write",
-            f"ok — B{w['seq']}", "ok",
-            req_meta={"collection": "vehicles", "db_action": "insert", "data": _vdata},
-            resp_meta={"collection": "vehicles", "db_action": "insert",
-                       "document_id": str(w["id"]), "version": 1, "data": _vdata},
-        )
+    def _write_events(writes, user_actor, letter):
+        out = []
+        for w in writes:
+            _vdata = {"vehicle_id": w["vid"], "type": "truck",
+                      "capacity": 5000 + (w["seq"] - 1) * 100, "year": 2020 + (w["seq"] - 1)}
+            out += req_resp_events(
+                w["t_send"], w["t_recv"], net_p,
+                user_actor, "primary",
+                f"write {w['vid']} (w=1)", "write",
+                f"ok — {letter}{w['seq']}", "ok",
+                req_meta={"collection": "vehicles", "db_action": "insert", "data": _vdata},
+                resp_meta={"collection": "vehicles", "db_action": "insert",
+                           "document_id": str(w["id"]), "version": 1, "data": _vdata},
+            )
+        return out
+
+    events += _write_events(results_a, "user_a", "A")
+    events += _write_events(results_b, "user_b", "B")
 
     # Oplog: batch of all writes streams to secondary
-    events.append({
-        "t_ms":       oplog_start_ms,
-        "latency_ms": safe_lat(net_s),
-        "from":       "primary",
-        "to":         "secondary",
-        "label":      f"oplog batch ({total_writes} writes, async, ~{repl_ms:.1f}ms)",
-        "type":       "replicate",
-        "collection": "vehicles",
-        "db_action":  "replicate",
-    })
-    events.append({
-        "t_ms":       secondary_applied_ms,
-        "latency_ms": safe_lat(net_s),
-        "from":       "secondary",
-        "to":         "primary",
-        "label":      f"all {total_writes} applied — {total_repl_ms:.0f}ms after burst",
-        "type":       "ack",
-        "collection": "vehicles",
-    })
+    events += replicate_ack_events(
+        oplog_start_ms, secondary_applied_ms, net_s,
+        f"oplog batch ({total_writes} writes, async, ~{repl_ms:.1f}ms)",
+        f"all {total_writes} applied — {total_repl_ms:.0f}ms after burst",
+        replicate_meta={"collection": "vehicles", "db_action": "replicate"},
+        ack_meta={"collection": "vehicles"},
+    )
 
     # Phase B: snapshot read from secondary (use user_a lane as the "reader")
     events += req_resp_events(
