@@ -294,10 +294,10 @@ def run_monotonic_reads():
         "experiment":  "monotonic_reads",
         "title":       "Monotonic Reads",
         "description": (
-            "Reader, SECONDARY'den ardışık okurken Writer, PRIMARY'de art arda "
-            f"w=1 update'lerle v1 -> v{FINAL_VERSION} yazar. Reader'ın gördüğü "
-            "version dizisi asla geriye gidemez: daha yüksek bir version "
-            "görüldükten sonra bir daha daha düşük bir version görülemez. "
+            "While the Reader reads SECONDARY repeatedly, the Writer issues a series of "
+            f"w=1 updates on PRIMARY from v1 to v{FINAL_VERSION}. The version sequence the Reader "
+            "sees must never go backwards: once a higher version is seen, a lower "
+            "version must never appear again. "
             "(DDIA Figure 5-4)"
         ),
         "actors":      MONO_ACTORS,

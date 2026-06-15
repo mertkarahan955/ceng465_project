@@ -180,8 +180,8 @@ def run_read_after_write():
         "experiment":  "read_after_write",
         "title":       "Read-After-Write Consistency",
         "description": (
-            "Yazıdan sonra SECONDARY'den okursak kendi yazımızı göremeyebiliriz. "
-            "RAW çözümü: write yapan session için okumaları PRIMARY'ye yönlendir. "
+            "Reading from SECONDARY right after a write may not show our own write. "
+            "RAW fix: route reads from the writing session to PRIMARY. "
             "(DDIA Figure 5-3)"
         ),
         "actors":      DEFAULT_ACTORS,

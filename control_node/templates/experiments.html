@@ -402,7 +402,7 @@ details summary:hover { color: var(--text); }
     <!-- 1. Synchronous Replication -->
     <div class="exp-card" id="card-sync_replication" onclick="selectExperiment('sync_replication')">
       <div class="exp-card-title">① Synchronous Replication</div>
-      <div class="exp-card-desc">w=majority — primary follower ACK'ini bekler, istemci sonra cevap alır</div>
+      <div class="exp-card-desc">w=majority — primary waits for the follower's ACK, then replies to the client</div>
       <span class="exp-badge badge-sync">w = majority</span>
       <button class="run-btn" id="btn-sync_replication"
               onclick="event.stopPropagation(); runExperiment('sync_replication')">
@@ -413,7 +413,7 @@ details summary:hover { color: var(--text); }
     <!-- 2. Eventual Consistency -->
     <div class="exp-card" id="card-eventual_consistency" onclick="selectExperiment('eventual_consistency')">
       <div class="exp-card-title">② Eventual Consistency</div>
-      <div class="exp-card-desc">w=1 — primary hemen döner, secondary async olarak güncellenir, stale read gözlemlenir</div>
+      <div class="exp-card-desc">w=1 — primary returns immediately, secondary updates asynchronously, stale reads can be observed</div>
       <span class="exp-badge badge-async">w = 1 (async)</span>
       <button class="run-btn" id="btn-eventual_consistency"
               onclick="event.stopPropagation(); runExperiment('eventual_consistency')">
@@ -424,7 +424,7 @@ details summary:hover { color: var(--text); }
     <!-- 3. Read-After-Write -->
     <div class="exp-card" id="card-read_after_write" onclick="selectExperiment('read_after_write')">
       <div class="exp-card-title">③ Read-After-Write</div>
-      <div class="exp-card-desc">w=1 yazar — secondary stale hit → "no results", primary'den oku → taze (DDIA Fig. 5-3)</div>
+      <div class="exp-card-desc">w=1 write — secondary stale hit → "no results", read from primary → fresh (DDIA Fig. 5-3)</div>
       <span class="exp-badge badge-primary">w=1 · PRIMARY read</span>
       <button class="run-btn" id="btn-read_after_write"
               onclick="event.stopPropagation(); runExperiment('read_after_write')">
@@ -435,7 +435,7 @@ details summary:hover { color: var(--text); }
     <!-- 4. Monotonic Reads -->
     <div class="exp-card" id="card-monotonic_reads" onclick="selectExperiment('monotonic_reads')">
       <div class="exp-card-title">④ Monotonic Reads</div>
-      <div class="exp-card-desc">PRIMARY v2 gördükten sonra SECONDARY v1 görmek ihlaldir — zaman geri gider (DDIA Fig. 5-4)</div>
+      <div class="exp-card-desc">Seeing SECONDARY v1 after PRIMARY v2 is a violation — time goes backwards (DDIA Fig. 5-4)</div>
       <span class="exp-badge badge-mono">version order</span>
       <button class="run-btn" id="btn-monotonic_reads"
               onclick="event.stopPropagation(); runExperiment('monotonic_reads')">
@@ -446,7 +446,7 @@ details summary:hover { color: var(--text); }
     <!-- 5. Concurrent Writes -->
     <div class="exp-card" id="card-concurrent_writes" onclick="selectExperiment('concurrent_writes')">
       <div class="exp-card-title">⑤ Concurrent Writes</div>
-      <div class="exp-card-desc">User A + User B eş zamanlı w=1 yazar → PRIMARY sıralar → SECONDARY aynı sırayla uygular</div>
+      <div class="exp-card-desc">User A + User B write w=1 concurrently → PRIMARY orders them → SECONDARY applies in the same order</div>
       <span class="exp-badge badge-async">2 users · order check</span>
       <button class="run-btn" id="btn-concurrent_writes"
               onclick="event.stopPropagation(); runExperiment('concurrent_writes')">
@@ -476,9 +476,9 @@ details summary:hover { color: var(--text); }
     <div class="readonly-banner" id="readonly-banner"></div>
     <div class="welcome" id="welcome-msg">
       <h2>Select an Experiment</h2>
-      <p>Sol panelden bir consistency deneyi seçin ve <strong>▶ Run</strong> butonuna tıklayın.<br>
-         Sonuçlar DDIA-style timeline diyagramı ile görselleştirilecek.<br><br>
-         Geçmiş deney sonuçları için <strong>History</strong> bölümünü kullanın.</p>
+      <p>Select a consistency experiment from the left panel and click <strong>▶ Run</strong>.<br>
+         Results will be visualized as a DDIA-style timeline diagram.<br><br>
+         Use the <strong>History</strong> section to browse past experiment results.</p>
     </div>
   </main>
 </div>
