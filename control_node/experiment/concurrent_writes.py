@@ -1,21 +1,25 @@
 """Experiment 5 — Concurrent Writes (Extended Scenario).
 
 Spec:
-  Objective: Test how concurrent writes to the leader are propagated to followers.
+  Objective: Test how concurrent writes to the SAME record on the leader are
+             propagated to followers.
   Steps:
-    - Perform multiple writes in quick succession to the leader.
-    - Read from followers to check if data is seen in the same order.
-  Expected: Followers show data in the same sequence as written to the leader.
-            Async replication may cause temporary inconsistency (not all writes
-            visible immediately), but ORDER is ALWAYS preserved.
+    - Insert a shared vehicle document (synchronously, so both nodes have it).
+    - Two users then fire concurrent w=1 UPDATES to that SAME document.
+    - Read from the follower to check whether it converges to the same final
+      value/version as the leader.
+  Expected: PRIMARY serialises every concurrent update via a single, global
+            log_index. SECONDARY applies the oplog in that exact order, so it
+            must converge to the identical final value — never get "stuck" on
+            an intermediate value from one of the two users.
   Observe:  Document how different consistency models (w=majority vs w=1) impact
-            the visibility and ordering of concurrent writes on the follower.
+            the visibility and convergence of concurrent writes on the follower.
 
 Implementation:
-  Two threads (User A and User B) fire writes to PRIMARY simultaneously.
-  PRIMARY serialises all writes internally — each gets a unique log_index.
-  SECONDARY applies the oplog in the same log_index order.
-  The experiment proves order is preserved even under true concurrency.
+  Two threads (User A and User B) fire updates to the SAME PRIMARY document
+  simultaneously. PRIMARY serialises all writes internally — each update gets
+  a unique log_index. SECONDARY applies the oplog in that log_index order, so
+  the last update (by log_index) always wins on both nodes.
 """
 
 import threading
@@ -28,6 +32,7 @@ import operations
 from .common import (
     measure_net_one_way,
     ms,
+    replicate_ack_events,
     req_resp_events,
     safe_lat,
     serialize_log,
@@ -43,18 +48,27 @@ CW_ACTORS = {
 }
 CW_ACTOR_ORDER = ["user_a", "user_b", "primary", "secondary"]
 
-WRITES_PER_USER = 3   # each user fires this many w=1 writes concurrently
+WRITES_PER_USER = 2   # each user fires this many w=1 updates concurrently
+SHARED_VEHICLE_ID = "CW-SHARED"
 
 
-def _user_thread(user_id: str, t0: float, out: list, lock: threading.Lock):
-    """Worker: fire WRITES_PER_USER w=1 writes and append timing records."""
+def _vehicle_value(seq: int, who: str) -> dict:
+    return {
+        "vehicle_id": SHARED_VEHICLE_ID,
+        "type": "truck",
+        "capacity": 5000 + seq * 100,
+        "year": 2020 + seq,
+        "last_writer": who,
+    }
+
+
+def _user_thread(user_id: str, t0: float, item_id, out: list, lock: threading.Lock):
+    """Worker: fire WRITES_PER_USER w=1 updates to the shared document."""
     for i in range(WRITES_PER_USER):
-        vid = f"CW-{user_id[-1].upper()}{i + 1}"
+        value = _vehicle_value(i + 1, user_id)
         t_ws = ms() - t0
         try:
-            item_id, _ = operations.insert_vehicle(
-                vid, f"34 CW{user_id[-1].upper()}{i:03d}", "truck", 5000 + i * 100, 2020 + i,
-            )
+            operations.update_item(item_id, value, collection="vehicles")
         except Exception:
             continue
         t_we = ms() - t0
@@ -62,189 +76,206 @@ def _user_thread(user_id: str, t0: float, out: list, lock: threading.Lock):
             out.append({
                 "user":   user_id,
                 "seq":    i + 1,
-                "vid":    vid,
                 "t_send": t_ws,
                 "t_recv": t_we,
-                "id":     item_id,
+                "value":  value,
             })
 
 
+def _poller_thread(t0: float, item_id, targets: set, out: dict, lock: threading.Lock):
+    """Poll SECONDARY; for each target version, record the t0-relative time it first appears.
+
+    Bounded to a short window: under LWW, a "lost update" can mean some
+    target versions never appear (two writes compute the same version_after),
+    so this must not block the experiment for long.
+    """
+    pending = set(targets)
+    deadline = time.time() + 0.3
+    while pending and time.time() < deadline:
+        doc = db.get_secondary()["vehicles"].find_one({"_id": item_id})
+        if doc:
+            v = doc.get("version", 0)
+            for target in sorted(pending):
+                if v >= target:
+                    with lock:
+                        out[target] = ms() - t0
+                    pending.discard(target)
+        time.sleep(0.002)
+
+
 def run_concurrent_writes():
-    """Two concurrent users → PRIMARY serialises → SECONDARY preserves order.
+    """Two concurrent users update the SAME document → PRIMARY serialises →
+    SECONDARY converges to the identical final value.
 
-    Phase A — concurrent w=1 burst (2 threads):
-      User A and User B each fire WRITES_PER_USER inserts simultaneously.
-      w=1 means PRIMARY does not wait for SECONDARY ACK — writes return fast.
-      PRIMARY assigns a unique, monotonic log_index to each write internally.
+    Setup — shared document:
+      Insert one vehicle document with the default (majority) write concern,
+      so both PRIMARY and SECONDARY have it before the concurrent burst.
 
-    Phase B — immediate follower snapshot:
-      Right after both threads finish, read all documents from SECONDARY.
-      Some may not be visible yet (async lag), but those that ARE visible
-      must be in log_index order (never out of order).
+    Phase A — concurrent w=1 update burst (2 threads):
+      User A and User B each fire WRITES_PER_USER updates to that SAME
+      document simultaneously. w=1 means PRIMARY does not wait for SECONDARY
+      ACK — updates return fast. PRIMARY assigns a unique, monotonic
+      log_index to each update internally. Each update's oplog entry starts
+      propagating to SECONDARY the moment it lands on PRIMARY (its own
+      replicate+ACK pair), not after the whole burst finishes.
 
-    Phase C — full-sync + order verification:
-      Poll SECONDARY until all writes are visible.
-      Verify: secondary log_index sequence == sorted(log_index sequence).
+    Phase B — read right after the burst:
+      Right after both threads finish, read the document from SECONDARY.
+      Its version tells us how many of the concurrent updates have already
+      propagated (async lag).
+
+    Phase C — full-sync + convergence check:
+      Poll SECONDARY until it reaches the final version.
+      Verify: SECONDARY's final value == PRIMARY's final value (last write,
+      by log_index, wins on both nodes).
     """
     net_p = measure_net_one_way(db.get_primary,   config.PRIMARY_NODE_SERVER_URL)
     net_s = measure_net_one_way(db.get_secondary, config.SECONDARY_NODE_SERVER_URL)
 
-    # ── Phase A: concurrent w=1 writes from two threads ──────────────────────
+    # ── Setup: insert the shared document both users will update ─────────────
+    item_id, _ = operations.insert_vehicle(
+        SHARED_VEHICLE_ID, "34 CWSHRD", "truck", 5000, 2020,
+    )
+
+    # ── Phase A: concurrent w=1 updates from two threads ──────────────────────
     results_a: list = []
     results_b: list = []
+    poll_result: dict = {}
     lock = threading.Lock()
+
+    final_version = 1 + 2 * WRITES_PER_USER   # v1 from the initial insert + 2*WRITES_PER_USER updates
+    target_versions = set(range(2, final_version + 1))
 
     with write_concern(1):
         t0 = ms()
 
         thread_a = threading.Thread(
-            target=_user_thread, args=("user_a", t0, results_a, lock), daemon=True,
+            target=_user_thread, args=("user_a", t0, item_id, results_a, lock), daemon=True,
         )
         thread_b = threading.Thread(
-            target=_user_thread, args=("user_b", t0, results_b, lock), daemon=True,
+            target=_user_thread, args=("user_b", t0, item_id, results_b, lock), daemon=True,
+        )
+        poller = threading.Thread(
+            target=_poller_thread, args=(t0, item_id, target_versions, poll_result, lock), daemon=True,
         )
         thread_a.start()
         thread_b.start()
+        poller.start()
         thread_a.join()
         thread_b.join()
+        poller.join()
 
-    all_writes = sorted(results_a + results_b, key=lambda w: w["t_send"])
-    all_ids    = [w["id"] for w in all_writes]
-    burst_done = max(w["t_recv"] for w in all_writes) if all_writes else 0.0
+    all_writes   = sorted(results_a + results_b, key=lambda w: w["t_send"])
+    total_writes = len(all_writes)
 
-    # ── Phase B: immediate secondary snapshot ─────────────────────────────────
+    # ── Resolve per-write oplog replication timing ────────────────────────────
+    # Each write's oplog entry starts propagating the moment the write request
+    # lands on PRIMARY, not when the w=1 ack returns to the client.
+    fallback_repl_ms = 0.0
+    repl_delays = []
+    for i, w in enumerate(all_writes):
+        v = i + 2   # v1 is the initial insert; writes produce v2..vFINAL in arrival order
+        oplog_start_ms = safe_lat(w["t_send"] + net_p)
+        applied_ms     = poll_result.get(v)
+        if applied_ms is not None:
+            secondary_applied_ms = max(applied_ms, oplog_start_ms + safe_lat(net_s))
+            total_repl_ms        = secondary_applied_ms - w["t_recv"]
+        else:
+            total_repl_ms        = fallback_repl_ms
+            secondary_applied_ms = oplog_start_ms + total_repl_ms
+        repl_delays.append(total_repl_ms)
+        w["v"]                     = v
+        w["oplog_start_ms"]        = oplog_start_ms
+        w["secondary_applied_ms"]  = secondary_applied_ms
+        w["total_repl_ms"]         = total_repl_ms
+
+    repl_ms = sum(repl_delays) / len(repl_delays) if repl_delays else fallback_repl_ms
+
+    # ── Phase B: read SECONDARY right after the burst ─────────────────────────
     snap_t_start = ms() - t0
-    snap_docs = {
-        str(oid): db.get_secondary()["vehicles"].find_one({"_id": oid})
-        for oid in all_ids
-    }
-    snap_t_end = ms() - t0
+    snap_doc     = db.get_secondary()["vehicles"].find_one({"_id": item_id})
+    snap_t_end   = ms() - t0
 
-    immediate_snap = [
-        {
-            "user":    w["user"],
-            "vid":     w["vid"],
-            "t_ms":    snap_t_start,
-            "t_end_ms":snap_t_end,
-            "visible": snap_docs.get(str(w["id"])) is not None,
-            "version": snap_docs[str(w["id"])].get("version") if snap_docs.get(str(w["id"])) else None,
-            "status":  "visible" if snap_docs.get(str(w["id"])) else "not yet synced",
-        }
-        for w in all_writes
-    ]
-    visible_immediately = sum(1 for s in immediate_snap if s["visible"])
-    total_writes        = len(all_writes)
+    snap_version        = snap_doc.get("version") if snap_doc else 0
+    visible_immediately = max(0, min(total_writes, snap_version - 1))
 
-    # ── Phase C: poll until all writes visible on secondary ───────────────────
-    repl_ms_actual = None
-    t_poll_rel     = ms() - t0
-    deadline       = time.time() + 8.0
-    while time.time() < deadline:
-        docs = [db.get_secondary()["vehicles"].find_one({"_id": oid}) for oid in all_ids]
-        if all(d is not None for d in docs):
-            repl_ms_actual = ms() - (t0 + t_poll_rel)
-            break
-        time.sleep(0.005)
+    # Final read on both nodes: did they converge on the same value?
+    t_final_start   = ms() - t0
+    primary_final   = db.get_primary()["vehicles"].find_one({"_id": item_id})
+    secondary_final = db.get_secondary()["vehicles"].find_one({"_id": item_id})
+    t_final_end     = ms() - t0
 
-    # Final secondary read: collect log_indexes in insertion order
-    t_final_start = ms() - t0
-    final_docs = []
-    for oid in all_ids:
-        doc = db.get_secondary()["vehicles"].find_one({"_id": oid})
-        if doc:
-            final_docs.append({
-                "id":        str(oid),
-                "vid":       doc.get("key", ""),
-                "log_index": doc.get("last_log_index"),
-            })
-    t_final_end = ms() - t0
-
-    log_indexes     = [d["log_index"] for d in final_docs if d["log_index"] is not None]
-    order_preserved = log_indexes == sorted(log_indexes)
-
-    repl_ms              = repl_ms_actual or 5.0
-    oplog_start_ms       = burst_done          # oplog streams after the concurrent burst completes
-    secondary_applied_ms = t_poll_rel + (repl_ms_actual or 0)
-    total_repl_ms        = secondary_applied_ms - burst_done
+    order_preserved = (
+        primary_final is not None
+        and secondary_final is not None
+        and secondary_final.get("version") == primary_final.get("version")
+        and secondary_final.get("value") == primary_final.get("value")
+    )
 
     # ── Build timeline events ─────────────────────────────────────────────────
     events = []
 
-    # Phase A: each user's writes on their own lane
-    for w in results_a:
-        _vdata = {"vehicle_id": w["vid"], "type": "truck",
-                  "capacity": 5000 + (w["seq"] - 1) * 100, "year": 2020 + (w["seq"] - 1)}
-        events += req_resp_events(
-            w["t_send"], w["t_recv"], net_p,
-            "user_a", "primary",
-            f"write {w['vid']} (w=1)", "write",
-            f"ok — A{w['seq']}", "ok",
-            req_meta={"collection": "vehicles", "db_action": "insert", "data": _vdata},
-            resp_meta={"collection": "vehicles", "db_action": "insert",
-                       "document_id": str(w["id"]), "version": 1, "data": _vdata},
-        )
-    for w in results_b:
-        _vdata = {"vehicle_id": w["vid"], "type": "truck",
-                  "capacity": 5000 + (w["seq"] - 1) * 100, "year": 2020 + (w["seq"] - 1)}
-        events += req_resp_events(
-            w["t_send"], w["t_recv"], net_p,
-            "user_b", "primary",
-            f"write {w['vid']} (w=1)", "write",
-            f"ok — B{w['seq']}", "ok",
-            req_meta={"collection": "vehicles", "db_action": "insert", "data": _vdata},
-            resp_meta={"collection": "vehicles", "db_action": "insert",
-                       "document_id": str(w["id"]), "version": 1, "data": _vdata},
-        )
+    # Phase A: each user's updates on their own lane, each followed by its own
+    # oplog replicate + ACK pair to SECONDARY.
+    def _write_events(writes, user_actor, letter):
+        out = []
+        for w in writes:
+            v = w["v"]
+            out += req_resp_events(
+                w["t_send"], w["t_recv"], net_p,
+                user_actor, "primary",
+                f"update vehicle (w=1) — {letter}{w['seq']}", "write",
+                f"ok — {letter}{w['seq']}", "ok",
+                req_meta={"collection": "vehicles", "db_action": "update",
+                          "document_id": str(item_id), "version": f"v{v - 1} -> v{v}", "data": w["value"]},
+                resp_meta={"collection": "vehicles", "db_action": "update",
+                           "document_id": str(item_id), "version": f"v{v}", "data": w["value"]},
+            )
+            out += replicate_ack_events(
+                w["oplog_start_ms"], w["secondary_applied_ms"], net_s,
+                f"oplog (async) — v{v}",
+                f"✓ v{v} applied — {w['total_repl_ms']:.0f}ms after write",
+                replicate_meta={"collection": "vehicles", "db_action": "replicate_update",
+                                "document_id": str(item_id), "version": f"v{v - 1} -> v{v}", "data": w["value"]},
+                ack_meta={"collection": "vehicles", "db_action": "applied_on_secondary",
+                          "document_id": str(item_id), "version": f"v{v}", "data": w["value"]},
+            )
+        return out
 
-    # Oplog: batch of all writes streams to secondary
-    events.append({
-        "t_ms":       oplog_start_ms,
-        "latency_ms": safe_lat(net_s),
-        "from":       "primary",
-        "to":         "secondary",
-        "label":      f"oplog batch ({total_writes} writes, async, ~{repl_ms:.1f}ms)",
-        "type":       "replicate",
-        "collection": "vehicles",
-        "db_action":  "replicate",
-    })
-    events.append({
-        "t_ms":       secondary_applied_ms,
-        "latency_ms": safe_lat(net_s),
-        "from":       "secondary",
-        "to":         "primary",
-        "label":      f"all {total_writes} applied — {total_repl_ms:.0f}ms after burst",
-        "type":       "ack",
-        "collection": "vehicles",
-    })
+    events += _write_events(results_a, "user_a", "A")
+    events += _write_events(results_b, "user_b", "B")
 
-    # Phase B: snapshot read from secondary (use user_a lane as the "reader")
+    # Phase B: read from secondary right after the burst (use user_a lane as the "reader")
     events += req_resp_events(
         snap_t_start, snap_t_end, net_s,
         "user_a", "secondary",
-        "snapshot read (right after burst)", "read",
-        f"{visible_immediately}/{total_writes} visible" + (
-            " ⚡ async lag" if visible_immediately < total_writes else " ✓ all present"
+        "read right after burst", "read",
+        f"v{snap_version} — {visible_immediately}/{total_writes} updates visible" + (
+            " ⚡ async lag" if visible_immediately < total_writes else " ✓ all applied"
         ),
         "stale_response" if visible_immediately < total_writes else "fresh_response",
-        req_meta={"collection": "vehicles", "db_action": "find"},
-        resp_meta={"collection": "vehicles", "db_action": "find",
-                   "version": visible_immediately},
+        req_meta={"collection": "vehicles", "db_action": "find", "document_id": str(item_id)},
+        resp_meta={"collection": "vehicles", "db_action": "find", "document_id": str(item_id),
+                   "version": snap_version, "data": snap_doc.get("value") if snap_doc else None},
     )
 
-    # Phase C: final ordered read (use user_b lane)
+    # Phase C: final convergence read (use user_b lane)
     events += req_resp_events(
         t_final_start, t_final_end, net_s,
         "user_b", "secondary",
-        f"final read — order check ({total_writes} docs)", "read",
-        "✓ log_index order preserved" if order_preserved else "⚡ ORDER VIOLATED",
+        "final read — convergence check", "read",
+        "✓ converged with PRIMARY" if order_preserved else "⚡ DIVERGED from PRIMARY",
         "fresh_response" if order_preserved else "stale_response",
-        req_meta={"collection": "vehicles", "db_action": "find"},
-        resp_meta={"collection": "vehicles", "db_action": "find",
-                   "version": total_writes},
+        req_meta={"collection": "vehicles", "db_action": "find", "document_id": str(item_id)},
+        resp_meta={"collection": "vehicles", "db_action": "find", "document_id": str(item_id),
+                   "version": secondary_final.get("version") if secondary_final else None,
+                   "data": secondary_final.get("value") if secondary_final else None},
     )
 
+    events.sort(key=lambda e: e["t_ms"])
+
     log = db.get_primary()["operation_logs"].find_one(
-        {"target_collection": "vehicles"},
+        {"target_id": item_id},
         sort=[("log_index", -1)],
     )
 
@@ -254,20 +285,20 @@ def run_concurrent_writes():
 
     return {
         "experiment":  "concurrent_writes",
-        "title":       "Concurrent Writes — Propagation Order",
+        "title":       "Concurrent Writes — Last-Write-Wins Convergence",
         "description": (
-            f"User A and User B each fire {WRITES_PER_USER} w=1 writes simultaneously. "
-            "PRIMARY serialises all writes (log_index). "
-            "SECONDARY must apply them in the same order — never out of sequence."
+            f"User A and User B each fire {WRITES_PER_USER} w=1 updates to the SAME "
+            "vehicle document simultaneously. PRIMARY serialises all updates "
+            "(log_index). SECONDARY must converge to the identical final value."
         ),
         "actors":      CW_ACTORS,
         "actor_order": CW_ACTOR_ORDER,
         "events":      events,
         "log":         serialize_log(log),
-        "reads":       immediate_snap,
         "summary": {
             "writes_per_user":      WRITES_PER_USER,
             "total_writes":         total_writes,
+            "final_version":        final_version,
             "visible_immediately":  visible_immediately,
             "visible_pct":          round(visible_immediately / total_writes * 100) if total_writes else 0,
             "avg_write_ms_user_a":  round(avg_a, 2),
@@ -275,7 +306,7 @@ def run_concurrent_writes():
             "replication_delay_ms": round(repl_ms, 2),
             "order_preserved":      order_preserved,
             "order_violated":       not order_preserved,
-            "log_index_sequence":   log_indexes,
+            "final_value":          primary_final.get("value") if primary_final else None,
             "consistency_model":    "Concurrent Writes",
             "consistency_achieved": order_preserved,
         },

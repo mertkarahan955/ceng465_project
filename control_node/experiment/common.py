@@ -12,10 +12,10 @@ import json
 import time
 import urllib.request
 
-_pair_counter = itertools.count(1)
-
 import db
 import operations
+
+_pair_counter = itertools.count(1)
 
 
 # Default 3-actor config (used by experiments 1, 2, 4)
@@ -137,6 +137,28 @@ def req_resp_events(
     return [
         {"t_ms": t_send,    "latency_ms": net, "from": from_actor, "to": to_actor,   "label": req_label,  "type": req_type,  "pair_id": pair_id, **(req_meta or {})},
         {"t_ms": ok_depart, "latency_ms": net, "from": to_actor,   "to": from_actor, "label": resp_label, "type": resp_type, "pair_id": pair_id, **(resp_meta or {})},
+    ]
+
+
+def replicate_ack_events(
+    replicate_t_ms: float,
+    ack_t_ms: float,
+    net: float,
+    replicate_label: str,
+    ack_label: str,
+    replicate_meta: dict | None = None,
+    ack_meta: dict | None = None,
+) -> list:
+    """Build the async oplog replicate + secondary ACK event pair.
+
+    PRIMARY streams the oplog entry to SECONDARY (replicate), which later
+    confirms it has applied the write (ack). Both legs share the same
+    one-way latency `net` (PRIMARY <-> SECONDARY).
+    """
+    net = safe_lat(net)
+    return [
+        {"t_ms": replicate_t_ms, "latency_ms": net, "from": "primary",   "to": "secondary", "label": replicate_label, "type": "replicate", **(replicate_meta or {})},
+        {"t_ms": ack_t_ms,       "latency_ms": net, "from": "secondary", "to": "primary",   "label": ack_label,       "type": "ack",        **(ack_meta or {})},
     ]
 
 

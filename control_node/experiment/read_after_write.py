@@ -21,6 +21,7 @@ from .common import (
     get_log,
     measure_net_one_way,
     ms,
+    replicate_ack_events,
     req_resp_events,
     safe_lat,
     serialize_log,
@@ -116,20 +117,15 @@ def run_read_after_write():
             },
         ),
         # Async oplog: primary sends after commit; secondary applies at secondary_applied_ms
-        {"t_ms": safe_lat(net_p),
-         "latency_ms": safe_lat(net_s),
-         "from": "primary", "to": "secondary",
-         "label": "oplog (async)", "type": "replicate",
-         "collection": "incidents", "db_action": "replicate_insert",
-         "document_id": str(item_id), "version": "v1", "data": incident_value},
-        # Ack from secondary when write is applied — pairs with oplog for span line
-        {"t_ms": secondary_applied_ms,
-         "latency_ms": safe_lat(net_s),
-         "from": "secondary", "to": "primary",
-         "label": f"{'✓' if not stale else '✓'} write applied — {total_repl_ms:.0f}ms after write",
-         "type": "ack",
-         "collection": "incidents", "db_action": "applied_on_secondary",
-         "document_id": str(item_id), "version": "v1", "data": incident_value},
+        *replicate_ack_events(
+            safe_lat(net_p), secondary_applied_ms, net_s,
+            "oplog (async)",
+            f"✓ write applied — {total_repl_ms:.0f}ms after write",
+            replicate_meta={"collection": "incidents", "db_action": "replicate_insert",
+                            "document_id": str(item_id), "version": "v1", "data": incident_value},
+            ack_meta={"collection": "incidents", "db_action": "applied_on_secondary",
+                      "document_id": str(item_id), "version": "v1", "data": incident_value},
+        ),
 
         # RAW read from PRIMARY — N_/ (N=network) shape using measured net_p
         *req_resp_events(
