@@ -15,7 +15,6 @@ from operations import insert_item, update_item, delete_item
 import experiment_runner
 
 app = Flask(__name__)
-READ_ONLY_MODE = False
 READ_ONLY_REASON = None
 
 
@@ -439,7 +438,6 @@ if __name__ == "__main__":
         db.ensure_indexes()
         operations.start_reconciler()
     except PyMongoError as e:
-        READ_ONLY_MODE = True
         READ_ONLY_REASON = str(e)
         print(f"WARNING: PRIMARY unavailable; starting dashboard in read-only mode: {e}")
     app.run(host="0.0.0.0", port=5001, debug=False, threaded=True)

@@ -16,7 +16,7 @@ from .common import (
 
 
 def run_sync_replication():
-    """w=majority: Primary follower ACK'ini bekler, sonra istemciye döner.
+    """w=majority: primary waits for the follower's ACK, then replies to the client.
 
     Timeline (N_/ (N=network) shape for each arrow pair):
       Client → Primary   : write request  (net_p)
@@ -90,7 +90,7 @@ def run_sync_replication():
     return {
         "experiment":  "sync_replication",
         "title":       "Synchronous Replication (w=majority)",
-        "description": "Primary, follower ACK'ini bekler. İstemci ancak secondary onayladıktan sonra 'ok' alır. Daha güvenli ama daha yavaş.",
+        "description": "Primary waits for the follower's ACK. The client only gets 'ok' after secondary confirms — safer but slower.",
         "actors":      DEFAULT_ACTORS,
         "actor_order": DEFAULT_ACTOR_ORDER,
         "events":      events,

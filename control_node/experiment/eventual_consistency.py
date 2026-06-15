@@ -342,9 +342,9 @@ def run_eventual_consistency():
         "experiment":  "eventual_consistency",
         "title":       "Eventual Consistency (w=1)",
         "description": (
-            "PRIMARY w=1 ile günceller — OK secondary beklenmeden döner. "
-            "SECONDARY stale (eski) veriyi gösterir, sonra yakalar. "
-            "İnterleaved okumalar PRIMARY/SECONDARY tutarsızlık penceresini gösterir."
+            "PRIMARY updates with w=1 — ok returns without waiting for secondary. "
+            "SECONDARY shows stale data for a moment, then catches up. "
+            "Reading PRIMARY then SECONDARY reveals the inconsistency window and its eventual convergence."
         ),
         "actors":      DEFAULT_ACTORS,
         "actor_order": DEFAULT_ACTOR_ORDER,

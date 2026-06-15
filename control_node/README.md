@@ -37,31 +37,8 @@ make dashboard
 |---------|-------------|
 | `make install` | Create virtualenv and install dependencies |
 | `make dashboard` | Start web dashboard at http://localhost:5001 |
-| `make demo` | Run insert/update/delete demo + save chart PNG |
-| `make test` | Run full test suite (13 assertions) |
-| `make benchmark` | Run 1000-op benchmark, save chart PNG |
-| `make trace` | Live operation log trace (run in second terminal) |
 | `make status` | Show PRIMARY / SECONDARY replica set state |
 | `make clean` | Drop all collections (fresh start) |
-
----
-
-## Two-Machine Benchmark
-
-Run simultaneously on both machines:
-
-**Primary machine:**
-```bash
-make benchmark-writer RUN_ID=run1 OPS=1000
-# waits for Enter — start reader first, then press Enter
-```
-
-**Secondary machine (at the same time):**
-```bash
-make benchmark-reader RUN_ID=run1
-```
-
-This measures true cross-machine replication delay as seen from the secondary.
 
 ---
 
@@ -83,7 +60,6 @@ Open **http://localhost:5001** (or http://192.168.88.146:5001 from secondary mac
 - Replication delay per operation (ms)
 - Operation log with `leader_write_time` and `follower_visible_time`
 - Secondary health state and pending log backlog
-- Live delay chart by operation type (insert / update / delete)
 - p50 / p95 / timeout stats in the header
 
 ### Write Concern Modes
@@ -161,27 +137,6 @@ The `/api/status`, `/api/items`, and `/api/logs` endpoints all trigger bounded r
 
 ---
 
-## Live Trace (two terminals)
-
-**Terminal 1 — run operations:**
-```bash
-make demo
-# or: make benchmark
-# or: use the dashboard
-```
-
-**Terminal 2 — watch logs live:**
-```bash
-make trace
-```
-
-On the secondary machine:
-```bash
-make trace-secondary
-```
-
----
-
 ## File Structure
 
 ```
@@ -189,13 +144,12 @@ control_node/
 ├── config.py          — MongoDB hosts, ports, timeouts
 ├── db.py              — primary and secondary connections
 ├── operations.py      — insert / update / delete + replication logging
+├── experiment_runner.py — consistency experiment runner
+├── experiment/         — DDIA consistency experiment modules
 ├── app.py             — Flask web dashboard server
 ├── templates/
-│   └── index.html     — dashboard UI
-├── visualize.py       — rich terminal demo + matplotlib chart
-├── test_replication.py — full test suite (13 tests)
-├── trace.py           — live operation log watcher
-├── benchmark.py       — 1000-op benchmark (single + two-machine)
+│   ├── index.html     — dashboard UI
+│   └── experiments.html — experiment runner UI
 ├── requirements.txt
 └── Makefile
 ```

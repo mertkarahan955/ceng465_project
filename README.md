@@ -15,13 +15,12 @@ ceng465_project/
 │   ├── config.py          — MongoDB hosts, ports, timeouts
 │   ├── db.py              — primary & secondary connections
 │   ├── operations.py      — insert / update / delete + replication logging
+│   ├── experiment_runner.py — consistency experiment runner
+│   ├── experiment/        — DDIA consistency experiment modules
 │   ├── app.py             — Flask web dashboard (port 5001)
 │   ├── templates/
-│   │   └── index.html     — dashboard UI
-│   ├── visualize.py       — rich terminal demo + matplotlib chart
-│   ├── test_replication.py — full test suite (13 assertions)
-│   ├── trace.py           — live change stream watcher
-│   ├── benchmark.py       — 1000-op benchmark
+│   │   ├── index.html     — dashboard UI
+│   │   └── experiments.html — experiment runner UI
 │   ├── requirements.txt
 │   └── Makefile
 ├── presentation/
@@ -175,10 +174,7 @@ This creates a Python virtualenv and installs all dependencies from `requirement
 
 ```
 flask==3.1.1
-matplotlib==3.10.9
-numpy==2.4.4
 pymongo==4.17.0
-rich==15.0.0
 ```
 
 ---
@@ -199,59 +195,17 @@ make dashboard
 # → http://192.168.88.30:5001  (accessible from secondary machine too)
 ```
 
-### Terminal demo (insert/update/delete + PNG chart)
+### Consistency experiments
 
-```bash
-make demo
-```
-
-### Full test suite
-
-```bash
-make test
-# Runs 13 assertions across 5 test categories
-# Expected: 13/13 PASS
-```
-
-### Live operation trace
-
-Run in a second terminal while other operations are happening:
-
-```bash
-make trace              # connect via primary
-make trace-secondary    # connect via secondary (run on secondary machine)
-```
-
-### 1000-op benchmark (single machine)
-
-```bash
-make benchmark
-# default: OPS=1000
-make benchmark OPS=500  # custom op count
-```
-
-Saves chart PNG to `control_node/benchmark_<run_id>_single.png`.
-
-### 1000-op benchmark (two machines)
-
-**Primary machine:**
-```bash
-make benchmark-writer RUN_ID=run1 OPS=1000
-# Prompts: "Start the reader on the secondary machine now, then press Enter..."
-```
-
-**Secondary machine (simultaneously):**
-```bash
-make benchmark-reader RUN_ID=run1
-```
-
-This measures true cross-machine replication delay — the delay as seen from the secondary machine's perspective, not just polling from the primary side.
+Open the dashboard's **Experiments** page (`/experiments`) to run the DDIA-style
+consistency experiments (sync replication, eventual consistency, read-after-write,
+monotonic reads, concurrent writes) and view their timeline visualizations.
 
 ### Clear all data
 
 ```bash
 make clean
-# Drops: items, operation_logs, benchmark_results, benchmark_manifest
+# Drops: fleet collections, items, operation_logs
 ```
 
 ---
