@@ -84,6 +84,10 @@ def run_read_after_write():
 
     repl_ms = repl_ms_actual or (log.get("replication_delay_ms") if log else None) or 5.0
 
+    # Oplog entry is written as part of the write itself — it starts
+    # propagating the moment the write request lands on PRIMARY.
+    oplog_start_ms = safe_lat(net_p)
+
     # When did secondary finish applying the write?
     if stale and repl_ms_actual:
         secondary_applied_ms = t_poll_rel + repl_ms_actual
@@ -92,6 +96,7 @@ def run_read_after_write():
     else:
         secondary_applied_ms = write_ms + repl_ms
 
+    secondary_applied_ms = max(secondary_applied_ms, oplog_start_ms + safe_lat(net_s))
     total_repl_ms = secondary_applied_ms - write_ms
 
     events = [
@@ -118,7 +123,7 @@ def run_read_after_write():
         ),
         # Async oplog: primary sends after commit; secondary applies at secondary_applied_ms
         *replicate_ack_events(
-            safe_lat(net_p), secondary_applied_ms, net_s,
+            oplog_start_ms, secondary_applied_ms, net_s,
             "oplog (async)",
             f"✓ write applied — {total_repl_ms:.0f}ms after write",
             replicate_meta={"collection": "incidents", "db_action": "replicate_insert",
@@ -168,6 +173,8 @@ def run_read_after_write():
             },
         ),
     ]
+
+    events.sort(key=lambda e: e["t_ms"])
 
     return {
         "experiment":  "read_after_write",
