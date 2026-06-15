@@ -1,0 +1,131 @@
+{
+  "saved_at": "2026-06-15T22:14:45.239965",
+  "experiment": "sync_replication",
+  "title": "Synchronous Replication (w=majority)",
+  "description": "Primary, follower ACK'ini bekler. İstemci ancak secondary onayladıktan sonra 'ok' alır. Daha güvenli ama daha yavaş.",
+  "actors": {
+    "client": {
+      "label": "Client / Dashboard",
+      "color": "#e6edf3",
+      "ip": "(control node)"
+    },
+    "primary": {
+      "label": "PRIMARY",
+      "color": "#3fb950",
+      "ip": "192.168.88.30"
+    },
+    "secondary": {
+      "label": "SECONDARY",
+      "color": "#58a6ff",
+      "ip": "192.168.88.70"
+    }
+  },
+  "actor_order": [
+    "client",
+    "primary",
+    "secondary"
+  ],
+  "events": [
+    {
+      "t_ms": 0,
+      "latency_ms": 7.3570556640625,
+      "from": "client",
+      "to": "primary",
+      "label": "write (w=majority)",
+      "type": "write",
+      "collection": "positions",
+      "db_action": "insert",
+      "document_id": "6a304f25f552926e823d59b8",
+      "version": "v1",
+      "data": {
+        "vehicle_id": "SYNC-EXP",
+        "lat": 41.0082,
+        "lng": 28.9784,
+        "city": "Istanbul",
+        "district": "Besiktas",
+        "speed_kmh": 65
+      }
+    },
+    {
+      "t_ms": 44.231944335937506,
+      "latency_ms": 7.3570556640625,
+      "from": "primary",
+      "to": "client",
+      "label": "ok (51.6 ms)",
+      "type": "ok",
+      "collection": "positions",
+      "db_action": "write_ack",
+      "document_id": "6a304f25f552926e823d59b8",
+      "version": "v1",
+      "data": {
+        "vehicle_id": "SYNC-EXP",
+        "lat": 41.0082,
+        "lng": 28.9784,
+        "city": "Istanbul",
+        "district": "Besiktas",
+        "speed_kmh": 65
+      }
+    },
+    {
+      "t_ms": 7.3570556640625,
+      "latency_ms": 2.640869140625,
+      "from": "primary",
+      "to": "secondary",
+      "label": "oplog → apply",
+      "type": "replicate",
+      "collection": "positions",
+      "db_action": "replicate_insert",
+      "document_id": "6a304f25f552926e823d59b8",
+      "version": "v1",
+      "data": {
+        "vehicle_id": "SYNC-EXP",
+        "lat": 41.0082,
+        "lng": 28.9784,
+        "city": "Istanbul",
+        "district": "Besiktas",
+        "speed_kmh": 65
+      }
+    },
+    {
+      "t_ms": 41.591075195312506,
+      "latency_ms": 2.640869140625,
+      "from": "secondary",
+      "to": "primary",
+      "label": "ACK ✓",
+      "type": "ack",
+      "collection": "positions",
+      "db_action": "applied_on_secondary",
+      "document_id": "6a304f25f552926e823d59b8",
+      "version": "v1",
+      "data": {
+        "vehicle_id": "SYNC-EXP",
+        "lat": 41.0082,
+        "lng": 28.9784,
+        "city": "Istanbul",
+        "district": "Besiktas",
+        "speed_kmh": 65
+      }
+    }
+  ],
+  "log": {
+    "log_index": 884,
+    "operation_id": "c1356cf3",
+    "version_before": null,
+    "version_after": 1,
+    "write_concern": "majority",
+    "status": "visible_on_follower",
+    "replication_delay_ms": 51.589000000000006,
+    "leader_write_time": "2026-06-15T19:14:45.166000",
+    "follower_visible_time": "2026-06-15T19:14:45.218000",
+    "target_collection": "positions"
+  },
+  "summary": {
+    "write_concern": "majority",
+    "write_returned_ms": 51.59,
+    "replication_delay_ms": 51.59,
+    "consistency_model": "Synchronous",
+    "version_after": 1,
+    "consistency_achieved": true,
+    "stale_read_possible": false
+  }
+}
