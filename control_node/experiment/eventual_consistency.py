@@ -72,15 +72,33 @@ def _set_secondary_delay(delay_secs: int) -> int:
         except Exception:
             pass
         time.sleep(0.2)
+
+    # Reconfig propagation to SECONDARY is async — if we proceed before
+    # SECONDARY's own config reflects the new secondaryDelaySecs, the very
+    # next write would replicate without any delay at all. Block until
+    # SECONDARY's own view of the config has the new value.
+    deadline = time.time() + 10
+    while time.time() < deadline:
+        try:
+            sec_cfg = db.get_secondary().client["admin"].command("replSetGetConfig")["config"]
+            if sec_cfg["members"][sec_idx].get("secondaryDelaySecs", 0) == delay_secs:
+                break
+        except Exception:
+            pass
+        time.sleep(0.1)
+
     return prev
 
 
 def run_eventual_consistency():
-    """Eventual consistency with interleaved PRIMARY / SECONDARY reads.
+    """Eventual consistency with a compact 4-read observation sequence.
 
-    The inconsistency window is made visible by alternating reads between the
-    two nodes: primary always returns v2 (consistent), secondary returns v1
-    (stale) until the oplog delay expires and it catches up.
+    SECONDARY's oplog application is artificially delayed by
+    `_SECONDARY_DELAY_SECS`. Right after the w=1 write:
+      1. PRIMARY  is read immediately -> v2 (leader always fresh).
+      2. SECONDARY is read at +200ms  -> still v1 (stale, within the delay).
+      3. SECONDARY is read at +700ms  -> still v1 (stale, within the delay).
+      4. SECONDARY is read once the delay expires -> v2 (caught up).
     """
     net_p = measure_net_one_way(db.get_primary,   config.PRIMARY_NODE_SERVER_URL)
     net_s = measure_net_one_way(db.get_secondary, config.SECONDARY_NODE_SERVER_URL)
@@ -125,15 +143,13 @@ def run_eventual_consistency():
     operations.set_write_concern("majority")
 
     # ── Phase 4: Observation sequence ─────────────────────────────────────────
-    # The intended observation is about PRIMARY vs SECONDARY state, not just a
-    # single secondary stale read:
-    #   secondary -> primary  (inconsistent)
-    #   secondary -> primary  (still inconsistent)
-    #   secondary             (finally consistent)
+    # 4 reads total, tightly packed:
+    #   1. PRIMARY  — right after write, always v2 (leader reference)
+    #   2. SECONDARY @ +200ms  — still within the 1s oplog delay -> stale v1
+    #   3. SECONDARY @ +700ms  — still within the 1s oplog delay -> stale v1
+    #   4. SECONDARY @ +1150ms — oplog delay expired -> caught up to v2
     TARGET = 2
     reads = []
-    latest_primary_version = TARGET
-    last_secondary_version = None
 
     def sleep_until_after_write(delay_ms: int) -> None:
         target_abs = t0 + write_returned_ms + delay_ms
@@ -142,20 +158,18 @@ def run_eventual_consistency():
             time.sleep(sleep_s)
 
     def observe_secondary(label: str) -> dict:
-        nonlocal last_secondary_version
         t_read = ms() - t0
         doc = db.get_secondary()["positions"].find_one({"_id": item_id})
         t_end = ms() - t0
         version = doc.get("version") if doc else None
-        stale = version != latest_primary_version
-        last_secondary_version = version
+        stale = version != TARGET
         obs = {
             "node":             "secondary",
             "label":            label,
             "t_ms":             t_read,
             "t_end_ms":         t_end,
             "version":          version,
-            "reference_version": latest_primary_version,
+            "reference_version": TARGET,
             "data":             doc.get("value") if doc else None,
             "stale":            stale,
             "nodes_consistent": not stale,
@@ -165,43 +179,38 @@ def run_eventual_consistency():
         return obs
 
     def observe_primary(label: str) -> dict:
-        nonlocal latest_primary_version
         t_read = ms() - t0
         doc = db.get_primary()["positions"].find_one({"_id": item_id})
         t_end = ms() - t0
         version = doc.get("version") if doc else None
-        latest_primary_version = version
-        inconsistent_with_secondary = last_secondary_version != version
         obs = {
             "node":             "primary",
             "label":            label,
             "t_ms":             t_read,
             "t_end_ms":         t_end,
             "version":          version,
-            "reference_version": last_secondary_version,
+            "reference_version": None,
             "data":             doc.get("value") if doc else None,
             "stale":            False,
-            "nodes_consistent": not inconsistent_with_secondary,
-            "status": (
-                f"leader has v{version}; follower still v{last_secondary_version}"
-                if inconsistent_with_secondary else
-                "leader and follower match"
-            ),
+            "nodes_consistent": True,
+            "status":           "leader committed the write immediately (w=1)",
         }
         reads.append(obs)
         return obs
 
     try:
+        # Read #1: PRIMARY immediately reflects v2.
+        observe_primary("read primary (leader reference)")
+
+        # Reads #2-3: within the 1s oplog delay window — SECONDARY still v1.
         sleep_until_after_write(200)
         observe_secondary("read secondary #1")
-        observe_primary("read primary #1 (leader reference)")
 
-        sleep_until_after_write(550)
+        sleep_until_after_write(700)
         observe_secondary("read secondary #2")
-        observe_primary("read primary #2 (leader reference)")
 
-        # Final observation: wait until the follower is expected to have applied
-        # the delayed oplog, then record the first secondary read that sees v2.
+        # Read #4: wait until the follower is expected to have applied the
+        # delayed oplog, then record the first secondary read that sees v2.
         sleep_until_after_write((_SECONDARY_DELAY_SECS * 1000) + 150)
         deadline = time.time() + 3.0
         final_obs = None
@@ -309,11 +318,7 @@ def run_eventual_consistency():
             ))
             continue
 
-        resp_label = (
-            f"✓ primary v{r['version']} — leader ahead of secondary v{r['reference_version']}"
-            if not r["nodes_consistent"] else
-            f"✓ primary v{r['version']} — leader/follower match"
-        )
+        resp_label = f"✓ primary v{r['version']} — leader always fresh"
         events.extend(req_resp_events(
             r["t_ms"], r["t_end_ms"], net_p,
             "client", "primary",
