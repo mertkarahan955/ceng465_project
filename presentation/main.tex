@@ -140,44 +140,85 @@ rs.reconfig(cfg)
   \end{lstlisting}
 \end{frame}
 
-% ── 5: Schema Design ──────────────────────────────────────────────────────────
-\begin{frame}[fragile]{Schema Design}
-  \begin{columns}
-    \column{0.48\textwidth}
-      \small\textbf{\texttt{items} collection}
+% ── 5: Domain Schema & Consistency Map ───────────────────────────────────────
+\begin{frame}[fragile]{Domain Schema --- Collections \& Consistency Map}
+  \begin{columns}[T]
+    \column{0.56\textwidth}
+      \vspace{0.1cm}
+      \begin{table}
+        \scriptsize
+        \setlength{\tabcolsep}{4pt}
+        \begin{tabular}{p{0.19\textwidth}p{0.13\textwidth}p{0.23\textwidth}p{0.18\textwidth}}
+          \toprule
+          \textbf{Collection} & \textbf{Write Freq.} & \textbf{Consistency Need} & \textbf{Experiment} \\
+          \midrule
+          \texttt{vehicles}
+            & Low
+            & Eventual consistency OK
+            & \textcolor{secondary}{Exp.\,2} \\
+          \addlinespace[2pt]
+          \texttt{drivers}
+            & Low
+            & Sync, lookup-critical
+            & \textcolor{secondary}{Exp.\,1} \\
+          \addlinespace[2pt]
+          \texttt{depots}
+            & Near-static
+            & Sync, rarely changes
+            & \textcolor{secondary}{Exp.\,1} \\
+          \addlinespace[2pt]
+          \texttt{shipments}
+            & Medium
+            & \textbf{Monotonic reads}
+            & \textcolor{orange}{Exp.\,4} \\
+          \addlinespace[2pt]
+          \texttt{positions}
+            & \textbf{High}
+            & Eventual consistency OK
+            & \textcolor{secondary}{Exp.\,5} \\
+          \addlinespace[2pt]
+          \texttt{incidents}
+            & Low
+            & \textcolor{danger}{\textbf{Read-after-write}}
+            & \textcolor{danger}{Exp.\,3} \\
+          \bottomrule
+        \end{tabular}
+      \end{table}
+      \vspace{0.15cm}
+      \begin{block}{Design principle}
+        \scriptsize Write frequency and business criticality drive the consistency model. \texttt{incidents} demands \textbf{RAW} (safety-critical); \texttt{positions} tolerates lag (high throughput). \texttt{shipments} must never see version go backwards (\textbf{monotonic reads}).
+      \end{block}
+
+    \column{0.41\textwidth}
+      \small\textbf{Universal document fields}
       \begin{lstlisting}[language={}]
 {
-  key,
-  value,
-  version,          -- increments on each write
-  leader_term,
-  last_log_index,
+  key,              -- business identifier
+  value,            -- domain payload
+  version,          -- increments each write
+  leader_term,      -- Raft epoch
+  last_log_index,   -- write ordering
   last_operation_id,
   last_updated,
   deleted           -- soft delete
 }
       \end{lstlisting}
-    \column{0.48\textwidth}
-      \small\textbf{\texttt{operation\_logs} collection}
+      \vspace{0.1cm}
+      \small\textbf{\texttt{operation\_logs} (observability)}
       \begin{lstlisting}[language={}]
 {
-  operation_type,   -- insert / update / delete
+  operation_type,        -- insert/update/delete
   log_index,
   leader_write_time,
   follower_visible_time,
   replication_delay_ms,
-  version_before,
-  version_after,
-  status,           -- pending_follower
-                    -- visible_on_follower
-                    -- timeout
-  write_concern     -- majority / 1
+  status,   -- pending_follower
+            -- visible_on_follower
+            -- timeout
+  write_concern -- majority / 1
 }
       \end{lstlisting}
   \end{columns}
-  \begin{block}{Raft-inspired metadata}
-    \small\texttt{leader\_term}, \texttt{log\_index}, \texttt{version}, and \texttt{operation\_id} make write ordering and follower visibility fully observable.
-  \end{block}
 \end{frame}
 
 % ── 6: Write Concern Modes ───────────────────────────────────────────────────
