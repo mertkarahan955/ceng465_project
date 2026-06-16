@@ -1,0 +1,199 @@
+{
+  "saved_at": "2026-06-16T10:16:13.997412",
+  "experiment": "read_after_write",
+  "title": "Read-After-Write Consistency",
+  "description": "Reading from SECONDARY right after a write may not show our own write. RAW fix: route reads from the writing session to PRIMARY. (DDIA Figure 5-3)",
+  "actors": {
+    "client": {
+      "label": "Client / Dashboard",
+      "color": "#e6edf3",
+      "ip": "(control node)"
+    },
+    "primary": {
+      "label": "PRIMARY",
+      "color": "#3fb950",
+      "ip": "192.168.88.30"
+    },
+    "secondary": {
+      "label": "SECONDARY",
+      "color": "#58a6ff",
+      "ip": "192.168.88.70"
+    }
+  },
+  "actor_order": [
+    "client",
+    "primary",
+    "secondary"
+  ],
+  "events": [
+    {
+      "t_ms": 0,
+      "latency_ms": 1.7947998046875,
+      "from": "client",
+      "to": "primary",
+      "label": "write incident (w=1)",
+      "type": "write",
+      "pair_id": 8,
+      "collection": "incidents",
+      "db_action": "insert",
+      "document_id": "6a30f83db442ebb2cb75be4b",
+      "version": "v1",
+      "data": {
+        "vehicle_id": "RAW-EXP",
+        "incident_type": "breakdown",
+        "severity": "critical",
+        "description": "RAW demo — dispatcher files incident",
+        "lat": null,
+        "lng": null,
+        "resolved": false
+      }
+    },
+    {
+      "t_ms": 1.7947998046875,
+      "latency_ms": 10.25146484375,
+      "from": "primary",
+      "to": "secondary",
+      "label": "oplog (async)",
+      "type": "replicate",
+      "collection": "incidents",
+      "db_action": "replicate_insert",
+      "document_id": "6a30f83db442ebb2cb75be4b",
+      "version": "v1",
+      "data": {
+        "vehicle_id": "RAW-EXP",
+        "incident_type": "breakdown",
+        "severity": "critical",
+        "description": "RAW demo — dispatcher files incident",
+        "lat": null,
+        "lng": null,
+        "resolved": false
+      }
+    },
+    {
+      "t_ms": 11.9783935546875,
+      "latency_ms": 1.7947998046875,
+      "from": "primary",
+      "to": "client",
+      "label": "ok (13.8ms) — immediately",
+      "type": "ok",
+      "pair_id": 8,
+      "collection": "incidents",
+      "db_action": "write_ack",
+      "document_id": "6a30f83db442ebb2cb75be4b",
+      "version": "v1",
+      "data": {
+        "vehicle_id": "RAW-EXP",
+        "incident_type": "breakdown",
+        "severity": "critical",
+        "description": "RAW demo — dispatcher files incident",
+        "lat": null,
+        "lng": null,
+        "resolved": false
+      }
+    },
+    {
+      "t_ms": 13.77392578125,
+      "latency_ms": 1.7947998046875,
+      "from": "client",
+      "to": "primary",
+      "label": "read (RAW path — PRIMARY)",
+      "type": "read",
+      "pair_id": 9,
+      "collection": "incidents",
+      "db_action": "read",
+      "document_id": "6a30f83db442ebb2cb75be4b"
+    },
+    {
+      "t_ms": 14.696044921875,
+      "latency_ms": 10.25146484375,
+      "from": "client",
+      "to": "secondary",
+      "label": "read (wrong path)",
+      "type": "read",
+      "pair_id": 10,
+      "collection": "incidents",
+      "db_action": "read",
+      "document_id": "6a30f83db442ebb2cb75be4b"
+    },
+    {
+      "t_ms": 16.0687255859375,
+      "latency_ms": 1.7947998046875,
+      "from": "primary",
+      "to": "client",
+      "label": "✓ fresh (0.9ms) — always",
+      "type": "fresh_response",
+      "pair_id": 9,
+      "collection": "incidents",
+      "db_action": "read_result",
+      "document_id": "6a30f83db442ebb2cb75be4b",
+      "version": "v1",
+      "data": {
+        "vehicle_id": "RAW-EXP",
+        "incident_type": "breakdown",
+        "severity": "critical",
+        "description": "RAW demo — dispatcher files incident",
+        "lat": null,
+        "lng": null,
+        "resolved": false
+      }
+    },
+    {
+      "t_ms": 25.447509765625,
+      "latency_ms": 10.25146484375,
+      "from": "secondary",
+      "to": "client",
+      "label": "⚡ stale! (write not propagated)",
+      "type": "stale_response",
+      "pair_id": 10,
+      "collection": "incidents",
+      "db_action": "read_result",
+      "document_id": "6a30f83db442ebb2cb75be4b",
+      "version": "not visible on secondary",
+      "data": null
+    },
+    {
+      "t_ms": 41.653076171875,
+      "latency_ms": 10.25146484375,
+      "from": "secondary",
+      "to": "primary",
+      "label": "✓ write applied — 28ms after write",
+      "type": "ack",
+      "collection": "incidents",
+      "db_action": "applied_on_secondary",
+      "document_id": "6a30f83db442ebb2cb75be4b",
+      "version": "v1",
+      "data": {
+        "vehicle_id": "RAW-EXP",
+        "incident_type": "breakdown",
+        "severity": "critical",
+        "description": "RAW demo — dispatcher files incident",
+        "lat": null,
+        "lng": null,
+        "resolved": false
+      }
+    }
+  ],
+  "log": {
+    "log_index": 929,
+    "operation_id": "7b7c78f3",
+    "version_before": null,
+    "version_after": 1,
+    "write_concern": "1",
+    "status": "pending_follower",
+    "replication_delay_ms": null,
+    "leader_write_time": "2026-06-16T07:16:13.953000",
+    "follower_visible_time": null,
+    "target_collection": "incidents"
+  },
+  "summary": {
+    "write_concern": "1 (async)",
+    "write_returned_ms": 13.77,
+    "raw_read_ms": 0.92,
+    "raw_fresh": true,
+    "stale_read_observed": true,
+    "follower_sync_ms": 13.29,
+    "replication_delay_ms": 13.29,
+    "consistency_model": "Read-After-Write",
+    "consistency_achieved": true
+  }
+}
