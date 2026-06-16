@@ -299,7 +299,7 @@ INPUT /usr/local/texlive/2026basic/texmf-dist/fonts/tfm/public/amsfonts/symbols/
 INPUT /usr/local/texlive/2026basic/texmf-dist/fonts/tfm/public/amsfonts/symbols/msbm7.tfm
 INPUT /usr/local/texlive/2026basic/texmf-dist/fonts/tfm/jknappen/ec/ecbx1200.tfm
 INPUT /usr/local/texlive/2026basic/texmf-dist/fonts/tfm/jknappen/ec/ectt1200.tfm
-INPUT /usr/local/texlive/2026basic/texmf-var/fonts/map/pdftex/updmap/pdftex.map
+INPUT /Users/dogukantopcu/Library/texlive/2026basic/texmf-var/fonts/map/pdftex/updmap/pdftex.map
 INPUT ./main.toc
 INPUT ./main.toc
 INPUT main.toc

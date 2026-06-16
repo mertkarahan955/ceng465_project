@@ -1,0 +1,392 @@
+{
+  "saved_at": "2026-06-16T09:57:55.555989",
+  "experiment": "eventual_consistency",
+  "title": "Eventual Consistency (w=1)",
+  "description": "PRIMARY updates with w=1 — ok returns without waiting for secondary. SECONDARY shows stale data for a moment, then catches up. Reading PRIMARY then SECONDARY reveals the inconsistency window and its eventual convergence.",
+  "actors": {
+    "client": {
+      "label": "Client / Dashboard",
+      "color": "#e6edf3",
+      "ip": "(control node)"
+    },
+    "primary": {
+      "label": "PRIMARY",
+      "color": "#3fb950",
+      "ip": "192.168.88.30"
+    },
+    "secondary": {
+      "label": "SECONDARY",
+      "color": "#58a6ff",
+      "ip": "192.168.88.70"
+    }
+  },
+  "actor_order": [
+    "client",
+    "primary",
+    "secondary"
+  ],
+  "events": [
+    {
+      "t_ms": 0.007080078125,
+      "latency_ms": 12.3330078125,
+      "from": "client",
+      "to": "primary",
+      "label": "write v2 (w=1)",
+      "type": "write",
+      "pair_id": 1,
+      "collection": "positions",
+      "db_action": "update",
+      "document_id": "6a30f3f18f45117bc2c28371",
+      "version": "v1 → v2",
+      "data_before": {
+        "vehicle_id": "EC-BASE",
+        "lat": 39.9334,
+        "lng": 32.8597,
+        "city": "Ankara",
+        "district": "Cankaya",
+        "speed_kmh": 80
+      },
+      "data": {
+        "vehicle_id": "EC-BASE",
+        "lat": 41.0082,
+        "lng": 28.9784,
+        "city": "Istanbul",
+        "district": "Besiktas",
+        "speed_kmh": 90
+      }
+    },
+    {
+      "t_ms": 31.2177734375,
+      "latency_ms": 12.3330078125,
+      "from": "primary",
+      "to": "client",
+      "label": "ok (43.5ms) — no secondary wait",
+      "type": "ok",
+      "pair_id": 1,
+      "collection": "positions",
+      "db_action": "write_ack",
+      "document_id": "6a30f3f18f45117bc2c28371",
+      "version": "v2",
+      "data": {
+        "vehicle_id": "EC-BASE",
+        "lat": 41.0082,
+        "lng": 28.9784,
+        "city": "Istanbul",
+        "district": "Besiktas",
+        "speed_kmh": 90
+      }
+    },
+    {
+      "t_ms": 12.340087890625,
+      "latency_ms": 3.237548828125,
+      "from": "primary",
+      "to": "secondary",
+      "label": "oplog async",
+      "type": "replicate",
+      "collection": "positions",
+      "db_action": "replicate_update",
+      "document_id": "6a30f3f18f45117bc2c28371",
+      "version": "v1 → v2",
+      "data_before": {
+        "vehicle_id": "EC-BASE",
+        "lat": 39.9334,
+        "lng": 32.8597,
+        "city": "Ankara",
+        "district": "Cankaya",
+        "speed_kmh": 80
+      },
+      "data": {
+        "vehicle_id": "EC-BASE",
+        "lat": 41.0082,
+        "lng": 28.9784,
+        "city": "Istanbul",
+        "district": "Besiktas",
+        "speed_kmh": 90
+      }
+    },
+    {
+      "t_ms": 247.369873046875,
+      "latency_ms": 3.237548828125,
+      "from": "secondary",
+      "to": "primary",
+      "label": "✓ consistent (v2) — 247ms after write",
+      "type": "ack",
+      "collection": "positions",
+      "db_action": "applied_on_secondary",
+      "document_id": "6a30f3f18f45117bc2c28371",
+      "version": "v2",
+      "data": {
+        "vehicle_id": "EC-BASE",
+        "lat": 41.0082,
+        "lng": 28.9784,
+        "city": "Istanbul",
+        "district": "Besiktas",
+        "speed_kmh": 90
+      }
+    },
+    {
+      "t_ms": 43.568115234375,
+      "latency_ms": 12.3330078125,
+      "from": "client",
+      "to": "primary",
+      "label": "read primary (leader reference)",
+      "type": "read",
+      "pair_id": 2,
+      "collection": "positions",
+      "db_action": "read",
+      "document_id": "6a30f3f18f45117bc2c28371"
+    },
+    {
+      "t_ms": 56.401123046875,
+      "latency_ms": 12.3330078125,
+      "from": "primary",
+      "to": "client",
+      "label": "✓ primary v2 — leader always fresh",
+      "type": "fresh_response",
+      "pair_id": 2,
+      "collection": "positions",
+      "db_action": "read_result",
+      "document_id": "6a30f3f18f45117bc2c28371",
+      "version": "v2",
+      "data": {
+        "vehicle_id": "EC-BASE",
+        "lat": 41.0082,
+        "lng": 28.9784,
+        "city": "Istanbul",
+        "district": "Besiktas",
+        "speed_kmh": 90
+      }
+    },
+    {
+      "t_ms": 247.369873046875,
+      "latency_ms": 3.237548828125,
+      "from": "client",
+      "to": "secondary",
+      "label": "read secondary #1",
+      "type": "read",
+      "pair_id": 3,
+      "collection": "positions",
+      "db_action": "read",
+      "document_id": "6a30f3f18f45117bc2c28371"
+    },
+    {
+      "t_ms": 251.107421875,
+      "latency_ms": 3.237548828125,
+      "from": "secondary",
+      "to": "client",
+      "label": "✓ secondary v2 = primary v2 (finally consistent)",
+      "type": "fresh_response",
+      "pair_id": 3,
+      "collection": "positions",
+      "db_action": "read_result",
+      "document_id": "6a30f3f18f45117bc2c28371",
+      "version": "v2",
+      "data": {
+        "vehicle_id": "EC-BASE",
+        "lat": 41.0082,
+        "lng": 28.9784,
+        "city": "Istanbul",
+        "district": "Besiktas",
+        "speed_kmh": 90
+      }
+    },
+    {
+      "t_ms": 745.94384765625,
+      "latency_ms": 3.237548828125,
+      "from": "client",
+      "to": "secondary",
+      "label": "read secondary #2",
+      "type": "read",
+      "pair_id": 4,
+      "collection": "positions",
+      "db_action": "read",
+      "document_id": "6a30f3f18f45117bc2c28371"
+    },
+    {
+      "t_ms": 749.681396484375,
+      "latency_ms": 3.237548828125,
+      "from": "secondary",
+      "to": "client",
+      "label": "✓ secondary v2 = primary v2 (finally consistent)",
+      "type": "fresh_response",
+      "pair_id": 4,
+      "collection": "positions",
+      "db_action": "read_result",
+      "document_id": "6a30f3f18f45117bc2c28371",
+      "version": "v2",
+      "data": {
+        "vehicle_id": "EC-BASE",
+        "lat": 41.0082,
+        "lng": 28.9784,
+        "city": "Istanbul",
+        "district": "Besiktas",
+        "speed_kmh": 90
+      }
+    },
+    {
+      "t_ms": 1196.329345703125,
+      "latency_ms": 3.237548828125,
+      "from": "client",
+      "to": "secondary",
+      "label": "read secondary #3 (eventual convergence)",
+      "type": "read",
+      "pair_id": 5,
+      "collection": "positions",
+      "db_action": "read",
+      "document_id": "6a30f3f18f45117bc2c28371"
+    },
+    {
+      "t_ms": 1200.06689453125,
+      "latency_ms": 3.237548828125,
+      "from": "secondary",
+      "to": "client",
+      "label": "✓ secondary v2 = primary v2 (finally consistent)",
+      "type": "fresh_response",
+      "pair_id": 5,
+      "collection": "positions",
+      "db_action": "read_result",
+      "document_id": "6a30f3f18f45117bc2c28371",
+      "version": "v2",
+      "data": {
+        "vehicle_id": "EC-BASE",
+        "lat": 41.0082,
+        "lng": 28.9784,
+        "city": "Istanbul",
+        "district": "Besiktas",
+        "speed_kmh": 90
+      }
+    }
+  ],
+  "log": {
+    "log_index": 915,
+    "operation_id": "7cb806b6",
+    "version_before": null,
+    "version_after": 1,
+    "write_concern": "1",
+    "status": "visible_on_follower",
+    "replication_delay_ms": 120.485,
+    "leader_write_time": "2026-06-16T06:57:53.870000",
+    "follower_visible_time": "2026-06-16T06:57:53.990000",
+    "target_collection": "positions"
+  },
+  "reads": [
+    {
+      "node": "primary",
+      "label": "read primary (leader reference)",
+      "t_ms": 43.568115234375,
+      "t_end_ms": 55.044189453125,
+      "version": 2,
+      "reference_version": null,
+      "data": {
+        "vehicle_id": "EC-BASE",
+        "lat": 41.0082,
+        "lng": 28.9784,
+        "city": "Istanbul",
+        "district": "Besiktas",
+        "speed_kmh": 90
+      },
+      "stale": false,
+      "nodes_consistent": true,
+      "status": "leader committed the write immediately (w=1)"
+    },
+    {
+      "node": "secondary",
+      "label": "read secondary #1",
+      "t_ms": 247.369873046875,
+      "t_end_ms": 249.719970703125,
+      "version": 2,
+      "reference_version": 2,
+      "data": {
+        "vehicle_id": "EC-BASE",
+        "lat": 41.0082,
+        "lng": 28.9784,
+        "city": "Istanbul",
+        "district": "Besiktas",
+        "speed_kmh": 90
+      },
+      "stale": false,
+      "nodes_consistent": true,
+      "status": "all nodes consistent"
+    },
+    {
+      "node": "secondary",
+      "label": "read secondary #2",
+      "t_ms": 745.94384765625,
+      "t_end_ms": 747.623046875,
+      "version": 2,
+      "reference_version": 2,
+      "data": {
+        "vehicle_id": "EC-BASE",
+        "lat": 41.0082,
+        "lng": 28.9784,
+        "city": "Istanbul",
+        "district": "Besiktas",
+        "speed_kmh": 90
+      },
+      "stale": false,
+      "nodes_consistent": true,
+      "status": "all nodes consistent"
+    },
+    {
+      "node": "secondary",
+      "label": "read secondary #3 (eventual convergence)",
+      "t_ms": 1196.329345703125,
+      "t_end_ms": 1199.041015625,
+      "version": 2,
+      "reference_version": 2,
+      "data": {
+        "vehicle_id": "EC-BASE",
+        "lat": 41.0082,
+        "lng": 28.9784,
+        "city": "Istanbul",
+        "district": "Besiktas",
+        "speed_kmh": 90
+      },
+      "stale": false,
+      "nodes_consistent": true,
+      "status": "all nodes consistent"
+    }
+  ],
+  "summary": {
+    "write_concern": "1 (async)",
+    "write_returned_ms": 43.54,
+    "consistency_model": "Eventual",
+    "stale_read_observed": false,
+    "stale_reads_observed": 0,
+    "consistency_achieved": true,
+    "consistency_window_ms": 247.4,
+    "replication_delay_ms": 120.48,
+    "secondary_delay_secs": 1,
+    "delay_factor": "secondaryDelaySecs=1 (artificial LAN delay)",
+    "read_observations": [
+      {
+        "at_ms": 43.6,
+        "node": "primary",
+        "version": "v2",
+        "reference": null,
+        "consistent": true
+      },
+      {
+        "at_ms": 247.4,
+        "node": "secondary",
+        "version": "v2",
+        "reference": "v2",
+        "consistent": true
+      },
+      {
+        "at_ms": 745.9,
+        "node": "secondary",
+        "version": "v2",
+        "reference": "v2",
+        "consistent": true
+      },
+      {
+        "at_ms": 1196.3,
+        "node": "secondary",
+        "version": "v2",
+        "reference": "v2",
+        "consistent": true
+      }
+    ]
+  }
+}

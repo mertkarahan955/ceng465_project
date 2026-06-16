@@ -1,6 +1,7 @@
 # Fdb version 4
-["pdflatex"] 1780948840.66179 "/Users/dogukantopcu/Desktop/CENG/CENG465/ceng465_project/report/main.tex" "main.pdf" "main" 1780948844.59278 0
-  "/Users/dogukantopcu/Desktop/CENG/CENG465/ceng465_project/report/main.tex" 1780948840.37376 41379 2da18344e2aaf70da6d122193f950a59 ""
+["pdflatex"] 1781593308.70995 "/Users/dogukantopcu/Desktop/CENG/CENG465/ceng465_project/report/main.tex" "main.pdf" "main" 1781593312.67396 0
+  "/Users/dogukantopcu/Desktop/CENG/CENG465/ceng465_project/report/main.tex" 1781557126.66473 41378 a558733e8c29c03754f54cdc799d4a1b ""
+  "/Users/dogukantopcu/Library/texlive/2026basic/texmf-var/fonts/map/pdftex/updmap/pdftex.map" 1781426389 439539 c76d9142e7ba44efb9d8e3ff1496e851 ""
   "/Users/dogukantopcu/Library/texlive/2026basic/texmf-var/fonts/pk/ljfour/jknappen/ec/ecbx1095.600pk" 1780756399.05384 28952 201c3f171bce215a3e8428dfe7cf2ecc ""
   "/Users/dogukantopcu/Library/texlive/2026basic/texmf-var/fonts/pk/ljfour/jknappen/ec/ecbx1200.600pk" 1773618088.99308 31928 ee84ebf2f3a0b6e3f1b54a084a4d11da ""
   "/Users/dogukantopcu/Library/texlive/2026basic/texmf-var/fonts/pk/ljfour/jknappen/ec/ecbx1440.600pk" 1773618090.9374 40112 a22c95437c3aea4ef98b5ed225daede7 ""
@@ -187,7 +188,6 @@
   "/usr/local/texlive/2026basic/texmf-dist/tex/latex/url/url.sty" 1388531844 12796 8edb7d69a20b857904dd0ea757c14ec9 ""
   "/usr/local/texlive/2026basic/texmf-dist/tex/latex/xcolor/xcolor.sty" 1727642399 55384 b454dec21c2d9f45ec0b793f0995b992 ""
   "/usr/local/texlive/2026basic/texmf-dist/web2c/texmf.cnf" 1770478701 43630 e9fa012910491fe5ae08a72c3c2997a7 ""
-  "/usr/local/texlive/2026basic/texmf-var/fonts/map/pdftex/updmap/pdftex.map" 1779789786 336287 66281ee7d336363165985f88eb2d2b76 ""
   "/usr/local/texlive/2026basic/texmf-var/web2c/pdftex/pdflatex.fmt" 1773617360 2966197 e704d392c0640a13226a7531e1c34cc5 ""
   "/usr/local/texlive/2026basic/texmf.cnf" 1772405582 628 bbc09d6d38872d53c11bb48dc9b14e88 ""
   "concurrent_writes.png" 1780946126.06536 250058 af62a80041897a9a36b2112ce3a453fb ""
@@ -196,10 +196,10 @@
   "failure_a.png" 1780947539.16442 954667 ce089123ee84063cbf91d03366db2c7a ""
   "failure_b.png" 1780947539.1682 945601 8f85bb3002fc585ad9751f013ff15ded ""
   "failure_c.png" 1780947539.1713 931791 8258cdb9a14cbdc00c11cbedd2088d8c ""
-  "main.aux" 1780948844.49543 9793 e25ed3a93bebe18657ceabc69b14333f "pdflatex"
-  "main.out" 1780948844.49667 4158 93f2d8285d03d49afd7e251bd08b5f5b "pdflatex"
-  "main.tex" 1780948840.37376 41379 2da18344e2aaf70da6d122193f950a59 ""
-  "main.toc" 1780948844.49691 2081 e1c78b693d9aa761f3b188e8c5052028 "pdflatex"
+  "main.aux" 1781593312.58237 9793 e25ed3a93bebe18657ceabc69b14333f "pdflatex"
+  "main.out" 1781593312.58356 4158 93f2d8285d03d49afd7e251bd08b5f5b "pdflatex"
+  "main.tex" 1781557126.66473 41378 a558733e8c29c03754f54cdc799d4a1b ""
+  "main.toc" 1781593312.58381 2081 e1c78b693d9aa761f3b188e8c5052028 "pdflatex"
   "monotonic_reads.png" 1780946126.06269 242815 752e9f62a17ccd78381615496a42fc34 ""
   "read_after_write.png" 1780946126.05982 150366 3d8e01bba1cdad6a33d3d100bb0bdd61 ""
   "synchronous.png" 1780946126.05443 84169 6590189b7a4a6da6dbe32e2396b3e3ce ""
