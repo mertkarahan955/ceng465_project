@@ -515,25 +515,29 @@ def update_item(target_id, new_value: dict, client_id: str = "control_node", col
     _require_secondary_for_majority()
     operation_id, log_index = _next_op()
 
-    current = primary[collection].find_one({"_id": target_id})
-    if not current:
-        raise ValueError(f"Item not found in {collection}: {target_id}")
-
-    version_before = current["version"]
-    version_after = version_before + 1
     leader_write_time = _now()
 
-    primary[collection].with_options(write_concern=_wc()).update_one(
+    # Atomic read-modify-write: $inc on version + $set in a single round-trip.
+    # find_one + update_one would let concurrent threads read the same version
+    # and produce the same version_after (lost update). find_one_and_update with
+    # $inc eliminates that window — MongoDB serialises the increment internally.
+    old_doc = primary[collection].with_options(write_concern=_wc()).find_one_and_update(
         {"_id": target_id},
-        {"$set": {
-            "value": new_value,
-            "version": version_after,
-            "last_log_index": log_index,
-            "last_operation_id": operation_id,
-            "last_updated": leader_write_time,
-            "leader_term": _leader_term,
-        }}
+        {"$inc": {"version": 1},
+         "$set": {
+             "value": new_value,
+             "last_log_index": log_index,
+             "last_operation_id": operation_id,
+             "last_updated": leader_write_time,
+             "leader_term": _leader_term,
+         }},
+        return_document=False,
     )
+    if old_doc is None:
+        raise ValueError(f"Item not found in {collection}: {target_id}")
+
+    version_before = old_doc["version"]
+    version_after  = version_before + 1
     log_id = _write_log(_log_entry(
         operation_id, log_index, "update", target_id, leader_write_time,
         version_before, version_after, client_id, collection=collection,
