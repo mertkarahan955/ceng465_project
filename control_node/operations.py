@@ -550,6 +550,66 @@ def update_item(target_id, new_value: dict, client_id: str = "control_node", col
     return delay_ms
 
 
+def increment_value_field(
+    target_id,
+    value_field: str,
+    amount,
+    client_id: str = "control_node",
+    collection: str = "items",
+):
+    """Atomically increment a numeric field inside ``value`` and bump version."""
+    primary = db.get_primary()
+    _require_secondary_for_majority()
+    operation_id, log_index = _next_op()
+    leader_write_time = _now()
+
+    field_path = f"value.{value_field}"
+    old_doc = primary[collection].with_options(write_concern=_wc()).find_one_and_update(
+        {"_id": target_id},
+        {"$inc": {"version": 1, field_path: amount},
+         "$set": {
+             "last_log_index": log_index,
+             "last_operation_id": operation_id,
+             "last_updated": leader_write_time,
+             "leader_term": _leader_term,
+         }},
+        return_document=False,
+    )
+    if old_doc is None:
+        raise ValueError(f"Item not found in {collection}: {target_id}")
+
+    old_value = old_doc.get("value", {})
+    value_before = old_value.get(value_field)
+    if not isinstance(value_before, Integral):
+        raise ValueError(
+            f"Field value.{value_field} must be numeric before increment; got {value_before!r}"
+        )
+
+    version_before = old_doc["version"]
+    version_after = version_before + 1
+    value_after = value_before + amount
+    log_id = _write_log(_log_entry(
+        operation_id, log_index, "increment", target_id, leader_write_time,
+        version_before, version_after, client_id, collection=collection,
+    ))
+
+    delay_ms = None
+    if not _is_async_write():
+        delay_ms = _complete_log_visibility(
+            log_id, target_id, version_after, leader_write_time, collection=collection
+        )
+
+    return {
+        "operation_id": operation_id,
+        "log_index": log_index,
+        "version_before": version_before,
+        "version_after": version_after,
+        "value_before": value_before,
+        "value_after": value_after,
+        "delay_ms": delay_ms,
+    }
+
+
 def delete_item(target_id, client_id: str = "control_node", collection: str = "items"):
     primary = db.get_primary()
     _require_secondary_for_majority()

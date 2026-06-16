@@ -1,0 +1,448 @@
+{
+  "saved_at": "2026-06-16T10:48:50.648117",
+  "experiment": "concurrent_writes",
+  "title": "Concurrent Writes — Last-Write-Wins Convergence",
+  "description": "User A and User B each fire 2 w=1 updates to the SAME vehicle document simultaneously. PRIMARY serialises all updates (log_index). SECONDARY must converge to the identical final value.",
+  "actors": {
+    "user_a": {
+      "label": "User A",
+      "color": "#79c0ff",
+      "ip": "(thread A)"
+    },
+    "user_b": {
+      "label": "User B",
+      "color": "#f0883e",
+      "ip": "(thread B)"
+    },
+    "primary": {
+      "label": "PRIMARY",
+      "color": "#3fb950",
+      "ip": "192.168.88.30"
+    },
+    "secondary": {
+      "label": "SECONDARY",
+      "color": "#a371f7",
+      "ip": "192.168.88.70"
+    }
+  },
+  "actor_order": [
+    "user_a",
+    "user_b",
+    "primary",
+    "secondary"
+  ],
+  "events": [
+    {
+      "t_ms": 0.198974609375,
+      "latency_ms": 11.10107421875,
+      "from": "user_a",
+      "to": "primary",
+      "label": "update vehicle (w=1) — A1",
+      "type": "write",
+      "pair_id": 7,
+      "collection": "vehicles",
+      "db_action": "update",
+      "document_id": "6a30ffe28ba4161448a150af",
+      "version": "v1 -> v2",
+      "data": {
+        "vehicle_id": "CW-SHARED",
+        "type": "truck",
+        "capacity": 5100,
+        "year": 2021,
+        "last_writer": "user_a"
+      }
+    },
+    {
+      "t_ms": 0.681884765625,
+      "latency_ms": 11.10107421875,
+      "from": "user_b",
+      "to": "primary",
+      "label": "update vehicle (w=1) — B1",
+      "type": "write",
+      "pair_id": 9,
+      "collection": "vehicles",
+      "db_action": "update",
+      "document_id": "6a30ffe28ba4161448a150af",
+      "version": "v2 -> v3",
+      "data": {
+        "vehicle_id": "CW-SHARED",
+        "type": "truck",
+        "capacity": 5100,
+        "year": 2021,
+        "last_writer": "user_b"
+      }
+    },
+    {
+      "t_ms": 11.300048828125,
+      "latency_ms": 3.2421875,
+      "from": "primary",
+      "to": "secondary",
+      "label": "oplog (async) — v2",
+      "type": "replicate",
+      "collection": "vehicles",
+      "db_action": "replicate_update",
+      "document_id": "6a30ffe28ba4161448a150af",
+      "version": "v1 -> v2",
+      "data": {
+        "vehicle_id": "CW-SHARED",
+        "type": "truck",
+        "capacity": 5100,
+        "year": 2021,
+        "last_writer": "user_a"
+      }
+    },
+    {
+      "t_ms": 11.782958984375,
+      "latency_ms": 3.2421875,
+      "from": "primary",
+      "to": "secondary",
+      "label": "oplog (async) — v3",
+      "type": "replicate",
+      "collection": "vehicles",
+      "db_action": "replicate_update",
+      "document_id": "6a30ffe28ba4161448a150af",
+      "version": "v2 -> v3",
+      "data": {
+        "vehicle_id": "CW-SHARED",
+        "type": "truck",
+        "capacity": 5100,
+        "year": 2021,
+        "last_writer": "user_b"
+      }
+    },
+    {
+      "t_ms": 25.196044921875,
+      "latency_ms": 3.2421875,
+      "from": "secondary",
+      "to": "primary",
+      "label": "✓ v2 applied — -14ms after write",
+      "type": "ack",
+      "collection": "vehicles",
+      "db_action": "applied_on_secondary",
+      "document_id": "6a30ffe28ba4161448a150af",
+      "version": "v2",
+      "data": {
+        "vehicle_id": "CW-SHARED",
+        "type": "truck",
+        "capacity": 5100,
+        "year": 2021,
+        "last_writer": "user_a"
+      }
+    },
+    {
+      "t_ms": 25.19775390625,
+      "latency_ms": 3.2421875,
+      "from": "secondary",
+      "to": "primary",
+      "label": "✓ v3 applied — -13ms after write",
+      "type": "ack",
+      "collection": "vehicles",
+      "db_action": "applied_on_secondary",
+      "document_id": "6a30ffe28ba4161448a150af",
+      "version": "v3",
+      "data": {
+        "vehicle_id": "CW-SHARED",
+        "type": "truck",
+        "capacity": 5100,
+        "year": 2021,
+        "last_writer": "user_b"
+      }
+    },
+    {
+      "t_ms": 27.5048828125,
+      "latency_ms": 11.10107421875,
+      "from": "primary",
+      "to": "user_b",
+      "label": "ok — B1",
+      "type": "ok",
+      "pair_id": 9,
+      "collection": "vehicles",
+      "db_action": "update",
+      "document_id": "6a30ffe28ba4161448a150af",
+      "version": "v3",
+      "data": {
+        "vehicle_id": "CW-SHARED",
+        "type": "truck",
+        "capacity": 5100,
+        "year": 2021,
+        "last_writer": "user_b"
+      }
+    },
+    {
+      "t_ms": 27.62255859375,
+      "latency_ms": 11.10107421875,
+      "from": "primary",
+      "to": "user_a",
+      "label": "ok — A1",
+      "type": "ok",
+      "pair_id": 7,
+      "collection": "vehicles",
+      "db_action": "update",
+      "document_id": "6a30ffe28ba4161448a150af",
+      "version": "v2",
+      "data": {
+        "vehicle_id": "CW-SHARED",
+        "type": "truck",
+        "capacity": 5100,
+        "year": 2021,
+        "last_writer": "user_a"
+      }
+    },
+    {
+      "t_ms": 38.61181640625,
+      "latency_ms": 11.10107421875,
+      "from": "user_b",
+      "to": "primary",
+      "label": "update vehicle (w=1) — B2",
+      "type": "write",
+      "pair_id": 10,
+      "collection": "vehicles",
+      "db_action": "update",
+      "document_id": "6a30ffe28ba4161448a150af",
+      "version": "v3 -> v4",
+      "data": {
+        "vehicle_id": "CW-SHARED",
+        "type": "truck",
+        "capacity": 5200,
+        "year": 2022,
+        "last_writer": "user_b"
+      }
+    },
+    {
+      "t_ms": 38.726806640625,
+      "latency_ms": 11.10107421875,
+      "from": "user_a",
+      "to": "primary",
+      "label": "update vehicle (w=1) — A2",
+      "type": "write",
+      "pair_id": 8,
+      "collection": "vehicles",
+      "db_action": "update",
+      "document_id": "6a30ffe28ba4161448a150af",
+      "version": "v4 -> v5",
+      "data": {
+        "vehicle_id": "CW-SHARED",
+        "type": "truck",
+        "capacity": 5200,
+        "year": 2022,
+        "last_writer": "user_a"
+      }
+    },
+    {
+      "t_ms": 49.712890625,
+      "latency_ms": 3.2421875,
+      "from": "primary",
+      "to": "secondary",
+      "label": "oplog (async) — v4",
+      "type": "replicate",
+      "collection": "vehicles",
+      "db_action": "replicate_update",
+      "document_id": "6a30ffe28ba4161448a150af",
+      "version": "v3 -> v4",
+      "data": {
+        "vehicle_id": "CW-SHARED",
+        "type": "truck",
+        "capacity": 5200,
+        "year": 2022,
+        "last_writer": "user_b"
+      }
+    },
+    {
+      "t_ms": 49.827880859375,
+      "latency_ms": 3.2421875,
+      "from": "primary",
+      "to": "secondary",
+      "label": "oplog (async) — v5",
+      "type": "replicate",
+      "collection": "vehicles",
+      "db_action": "replicate_update",
+      "document_id": "6a30ffe28ba4161448a150af",
+      "version": "v4 -> v5",
+      "data": {
+        "vehicle_id": "CW-SHARED",
+        "type": "truck",
+        "capacity": 5200,
+        "year": 2022,
+        "last_writer": "user_a"
+      }
+    },
+    {
+      "t_ms": 52.973876953125,
+      "latency_ms": 3.2421875,
+      "from": "secondary",
+      "to": "primary",
+      "label": "✓ v4 applied — -14ms after write",
+      "type": "ack",
+      "collection": "vehicles",
+      "db_action": "applied_on_secondary",
+      "document_id": "6a30ffe28ba4161448a150af",
+      "version": "v4",
+      "data": {
+        "vehicle_id": "CW-SHARED",
+        "type": "truck",
+        "capacity": 5200,
+        "year": 2022,
+        "last_writer": "user_b"
+      }
+    },
+    {
+      "t_ms": 55.60595703125,
+      "latency_ms": 11.10107421875,
+      "from": "primary",
+      "to": "user_b",
+      "label": "ok — B2",
+      "type": "ok",
+      "pair_id": 10,
+      "collection": "vehicles",
+      "db_action": "update",
+      "document_id": "6a30ffe28ba4161448a150af",
+      "version": "v4",
+      "data": {
+        "vehicle_id": "CW-SHARED",
+        "type": "truck",
+        "capacity": 5200,
+        "year": 2022,
+        "last_writer": "user_b"
+      }
+    },
+    {
+      "t_ms": 55.72802734375,
+      "latency_ms": 11.10107421875,
+      "from": "primary",
+      "to": "user_a",
+      "label": "ok — A2",
+      "type": "ok",
+      "pair_id": 8,
+      "collection": "vehicles",
+      "db_action": "update",
+      "document_id": "6a30ffe28ba4161448a150af",
+      "version": "v5",
+      "data": {
+        "vehicle_id": "CW-SHARED",
+        "type": "truck",
+        "capacity": 5200,
+        "year": 2022,
+        "last_writer": "user_a"
+      }
+    },
+    {
+      "t_ms": 56.490966796875,
+      "latency_ms": 3.2421875,
+      "from": "secondary",
+      "to": "primary",
+      "label": "✓ v5 applied — -10ms after write",
+      "type": "ack",
+      "collection": "vehicles",
+      "db_action": "applied_on_secondary",
+      "document_id": "6a30ffe28ba4161448a150af",
+      "version": "v5",
+      "data": {
+        "vehicle_id": "CW-SHARED",
+        "type": "truck",
+        "capacity": 5200,
+        "year": 2022,
+        "last_writer": "user_a"
+      }
+    },
+    {
+      "t_ms": 66.93994140625,
+      "latency_ms": 3.2421875,
+      "from": "user_a",
+      "to": "secondary",
+      "label": "read right after burst",
+      "type": "read",
+      "pair_id": 11,
+      "collection": "vehicles",
+      "db_action": "find",
+      "document_id": "6a30ffe28ba4161448a150af"
+    },
+    {
+      "t_ms": 74.82275390625,
+      "latency_ms": 3.2421875,
+      "from": "secondary",
+      "to": "user_a",
+      "label": "v5 — matches PRIMARY ✓",
+      "type": "fresh_response",
+      "pair_id": 11,
+      "collection": "vehicles",
+      "db_action": "find",
+      "document_id": "6a30ffe28ba4161448a150af",
+      "version": 5,
+      "data": {
+        "vehicle_id": "CW-SHARED",
+        "type": "truck",
+        "capacity": 5200,
+        "year": 2022,
+        "last_writer": "user_b"
+      }
+    },
+    {
+      "t_ms": 78.06982421875,
+      "latency_ms": 3.2421875,
+      "from": "user_b",
+      "to": "secondary",
+      "label": "final read — convergence check",
+      "type": "read",
+      "pair_id": 12,
+      "collection": "vehicles",
+      "db_action": "find",
+      "document_id": "6a30ffe28ba4161448a150af"
+    },
+    {
+      "t_ms": 86.837890625,
+      "latency_ms": 3.2421875,
+      "from": "secondary",
+      "to": "user_b",
+      "label": "✓ converged with PRIMARY",
+      "type": "fresh_response",
+      "pair_id": 12,
+      "collection": "vehicles",
+      "db_action": "find",
+      "document_id": "6a30ffe28ba4161448a150af",
+      "version": 5,
+      "data": {
+        "vehicle_id": "CW-SHARED",
+        "type": "truck",
+        "capacity": 5200,
+        "year": 2022,
+        "last_writer": "user_b"
+      }
+    }
+  ],
+  "log": {
+    "log_index": 989,
+    "operation_id": "4341f1ae",
+    "version_before": 3,
+    "version_after": 4,
+    "write_concern": "1",
+    "status": "pending_follower",
+    "replication_delay_ms": null,
+    "leader_write_time": "2026-06-16T07:48:50.568000",
+    "follower_visible_time": null,
+    "target_collection": "vehicles"
+  },
+  "summary": {
+    "writes_per_user": 2,
+    "total_writes": 4,
+    "expected_final_version": 5,
+    "actual_final_version": 5,
+    "lost_updates": 0,
+    "visible_immediately": 4,
+    "visible_pct": 80,
+    "secondary_lagged": false,
+    "avg_write_ms_user_a": 33.31,
+    "avg_write_ms_user_b": 33.01,
+    "replication_delay_ms": 0.0,
+    "order_preserved": true,
+    "order_violated": false,
+    "final_value": {
+      "vehicle_id": "CW-SHARED",
+      "type": "truck",
+      "capacity": 5200,
+      "year": 2022,
+      "last_writer": "user_b"
+    },
+    "consistency_model": "Concurrent Writes",
+    "consistency_achieved": true
+  }
+}

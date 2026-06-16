@@ -446,8 +446,8 @@ details summary:hover { color: var(--text); }
     <!-- 5. Concurrent Writes -->
     <div class="exp-card" id="card-concurrent_writes" onclick="selectExperiment('concurrent_writes')">
       <div class="exp-card-title">⑤ Concurrent Writes</div>
-      <div class="exp-card-desc">User A + User B write w=1 concurrently → PRIMARY orders them → SECONDARY applies in the same order</div>
-      <span class="exp-badge badge-async">2 users · order check</span>
+      <div class="exp-card-desc">User A + User B load cargo concurrently → each request does <code>$inc value.capacity</code> → every +100 is preserved</div>
+      <span class="exp-badge badge-async">2 users · atomic $inc</span>
       <button class="run-btn" id="btn-concurrent_writes"
               onclick="event.stopPropagation(); runExperiment('concurrent_writes')">
         ▶ Run
@@ -885,11 +885,20 @@ function buildStatRows(s) {
 
   // Concurrent Writes observations
   if (s.total_writes        != null) rows.push(stat('Total writes',        s.total_writes + ' (2 users × ' + s.writes_per_user + ')', 'blue'));
+  if (s.capacity_increment  != null) rows.push(stat('Increment step',      '+' + s.capacity_increment + ' capacity', 'orange'));
+  if (s.total_increment_added != null) rows.push(stat('Total load added',  '+' + s.total_increment_added + ' capacity', 'blue'));
+  if (s.expected_final_capacity != null) rows.push(stat('Expected capacity', String(s.expected_final_capacity), 'white'));
+  if (s.primary_final_capacity != null) rows.push(stat('PRIMARY capacity',  String(s.primary_final_capacity),
+                                                       s.primary_final_capacity === s.expected_final_capacity ? 'green' : 'red'));
+  if (s.secondary_final_capacity != null) rows.push(stat('SECONDARY capacity', String(s.secondary_final_capacity),
+                                                         s.secondary_final_capacity === s.expected_final_capacity ? 'green' : 'red'));
   if (s.visible_immediately != null) rows.push(stat('Visible immediately', s.visible_immediately + '/' + s.total_writes + ' (' + s.visible_pct + '%)',
                                                      s.visible_immediately === s.total_writes ? 'green' : 'orange'));
   if (s.avg_write_ms_user_a != null) rows.push(stat('Avg write User A',   s.avg_write_ms_user_a.toFixed(1) + ' ms', 'blue'));
   if (s.avg_write_ms_user_b != null) rows.push(stat('Avg write User B',   s.avg_write_ms_user_b.toFixed(1) + ' ms', 'orange'));
-  if (s.order_violated      != null) rows.push(stat('Write order',        s.order_violated ? 'VIOLATED ⚡' : 'PRESERVED ✓',
+  if (s.increments_preserved != null) rows.push(stat('Atomic increments', s.increments_preserved ? 'PRESERVED ✓' : 'LOST ⚡',
+                                                      s.increments_preserved ? 'green' : 'red'));
+  if (s.order_violated      != null) rows.push(stat('Convergence',        s.order_violated ? 'DIVERGED ⚡' : 'MATCHES PRIMARY ✓',
                                                      s.order_violated ? 'red' : 'green'));
 
   return rows.join('');

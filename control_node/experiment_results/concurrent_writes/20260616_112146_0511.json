@@ -1,0 +1,376 @@
+{
+  "saved_at": "2026-06-16T11:21:46.052296",
+  "experiment": "concurrent_writes",
+  "title": "Concurrent Writes — Atomic $inc Capacity Growth",
+  "description": "User A and User B each fire 2 concurrent w=1 load requests to the same vehicle. Every request does value.capacity += 100 with MongoDB $inc, so PRIMARY preserves every increment and SECONDARY eventually converges to the same total.",
+  "actors": {
+    "user_a": {
+      "label": "User A",
+      "color": "#79c0ff",
+      "ip": "(thread A)"
+    },
+    "user_b": {
+      "label": "User B",
+      "color": "#f0883e",
+      "ip": "(thread B)"
+    },
+    "primary": {
+      "label": "PRIMARY",
+      "color": "#3fb950",
+      "ip": "192.168.88.30"
+    },
+    "secondary": {
+      "label": "SECONDARY",
+      "color": "#a371f7",
+      "ip": "192.168.88.70"
+    }
+  },
+  "actor_order": [
+    "user_a",
+    "user_b",
+    "primary",
+    "secondary"
+  ],
+  "events": [
+    {
+      "t_ms": 0.805908203125,
+      "latency_ms": 11.9244384765625,
+      "from": "user_b",
+      "to": "primary",
+      "label": "load cargo +100kg (w=1) — B1",
+      "type": "write",
+      "pair_id": 7,
+      "collection": "vehicles",
+      "db_action": "increment_capacity",
+      "document_id": "6a3107992f48a0642e524c88",
+      "version": "v2 -> v3",
+      "data_before": {
+        "capacity": 100
+      },
+      "data": {
+        "vehicle_id": "CW-SHARED",
+        "capacity": 100,
+        "delta_capacity": 100
+      }
+    },
+    {
+      "t_ms": 12.7303466796875,
+      "latency_ms": 1.95263671875,
+      "from": "primary",
+      "to": "secondary",
+      "label": "oplog (async) — v3, +100kg",
+      "type": "replicate",
+      "collection": "vehicles",
+      "db_action": "replicate_increment",
+      "document_id": "6a3107992f48a0642e524c88",
+      "version": "v2 -> v3",
+      "data_before": {
+        "capacity": 100
+      },
+      "data": {
+        "capacity": 200,
+        "delta_capacity": 100
+      }
+    },
+    {
+      "t_ms": 14.936767578125,
+      "latency_ms": 11.9244384765625,
+      "from": "user_a",
+      "to": "primary",
+      "label": "load cargo +100kg (w=1) — A2",
+      "type": "write",
+      "pair_id": 6,
+      "collection": "vehicles",
+      "db_action": "increment_capacity",
+      "document_id": "6a3107992f48a0642e524c88",
+      "version": "v3 -> v4",
+      "data_before": {
+        "capacity": 200
+      },
+      "data": {
+        "vehicle_id": "CW-SHARED",
+        "capacity": 200,
+        "delta_capacity": 100
+      }
+    },
+    {
+      "t_ms": 20.85400390625,
+      "latency_ms": 1.95263671875,
+      "from": "secondary",
+      "to": "primary",
+      "label": "✓ v3 applied — capacity 200",
+      "type": "ack",
+      "collection": "vehicles",
+      "db_action": "applied_on_secondary",
+      "document_id": "6a3107992f48a0642e524c88",
+      "version": "v3",
+      "data": {
+        "capacity": 200
+      }
+    },
+    {
+      "t_ms": 26.8612060546875,
+      "latency_ms": 1.95263671875,
+      "from": "primary",
+      "to": "secondary",
+      "label": "oplog (async) — v4, +100kg",
+      "type": "replicate",
+      "collection": "vehicles",
+      "db_action": "replicate_increment",
+      "document_id": "6a3107992f48a0642e524c88",
+      "version": "v3 -> v4",
+      "data_before": {
+        "capacity": 200
+      },
+      "data": {
+        "capacity": 300,
+        "delta_capacity": 100
+      }
+    },
+    {
+      "t_ms": 28.0914306640625,
+      "latency_ms": 11.9244384765625,
+      "from": "primary",
+      "to": "user_b",
+      "label": "ok — capacity 100 -> 200",
+      "type": "ok",
+      "pair_id": 7,
+      "collection": "vehicles",
+      "db_action": "increment_capacity",
+      "document_id": "6a3107992f48a0642e524c88",
+      "version": "v3",
+      "data_before": {
+        "capacity": 100
+      },
+      "data": {
+        "vehicle_id": "CW-SHARED",
+        "capacity": 200,
+        "delta_capacity": 100
+      }
+    },
+    {
+      "t_ms": 32.0694580078125,
+      "latency_ms": 11.9244384765625,
+      "from": "primary",
+      "to": "user_a",
+      "label": "ok — capacity 200 -> 300",
+      "type": "ok",
+      "pair_id": 6,
+      "collection": "vehicles",
+      "db_action": "increment_capacity",
+      "document_id": "6a3107992f48a0642e524c88",
+      "version": "v4",
+      "data_before": {
+        "capacity": 200
+      },
+      "data": {
+        "vehicle_id": "CW-SHARED",
+        "capacity": 300,
+        "delta_capacity": 100
+      }
+    },
+    {
+      "t_ms": 40.02001953125,
+      "latency_ms": 11.9244384765625,
+      "from": "user_b",
+      "to": "primary",
+      "label": "load cargo +100kg (w=1) — B2",
+      "type": "write",
+      "pair_id": 8,
+      "collection": "vehicles",
+      "db_action": "increment_capacity",
+      "document_id": "6a3107992f48a0642e524c88",
+      "version": "v4 -> v5",
+      "data_before": {
+        "capacity": 300
+      },
+      "data": {
+        "vehicle_id": "CW-SHARED",
+        "capacity": 300,
+        "delta_capacity": 100
+      }
+    },
+    {
+      "t_ms": 45.74072265625,
+      "latency_ms": 1.95263671875,
+      "from": "secondary",
+      "to": "primary",
+      "label": "✓ v4 applied — capacity 300",
+      "type": "ack",
+      "collection": "vehicles",
+      "db_action": "applied_on_secondary",
+      "document_id": "6a3107992f48a0642e524c88",
+      "version": "v4",
+      "data": {
+        "capacity": 300
+      }
+    },
+    {
+      "t_ms": 51.9444580078125,
+      "latency_ms": 1.95263671875,
+      "from": "primary",
+      "to": "secondary",
+      "label": "oplog (async) — v5, +100kg",
+      "type": "replicate",
+      "collection": "vehicles",
+      "db_action": "replicate_increment",
+      "document_id": "6a3107992f48a0642e524c88",
+      "version": "v4 -> v5",
+      "data_before": {
+        "capacity": 300
+      },
+      "data": {
+        "capacity": 400,
+        "delta_capacity": 100
+      }
+    },
+    {
+      "t_ms": 146.580078125,
+      "latency_ms": 1.95263671875,
+      "from": "secondary",
+      "to": "primary",
+      "label": "✓ v5 applied — capacity 400",
+      "type": "ack",
+      "collection": "vehicles",
+      "db_action": "applied_on_secondary",
+      "document_id": "6a3107992f48a0642e524c88",
+      "version": "v5",
+      "data": {
+        "capacity": 400
+      }
+    },
+    {
+      "t_ms": 148.2073974609375,
+      "latency_ms": 11.9244384765625,
+      "from": "primary",
+      "to": "user_b",
+      "label": "ok — capacity 300 -> 400",
+      "type": "ok",
+      "pair_id": 8,
+      "collection": "vehicles",
+      "db_action": "increment_capacity",
+      "document_id": "6a3107992f48a0642e524c88",
+      "version": "v5",
+      "data_before": {
+        "capacity": 300
+      },
+      "data": {
+        "vehicle_id": "CW-SHARED",
+        "capacity": 400,
+        "delta_capacity": 100
+      }
+    },
+    {
+      "t_ms": 160.23583984375,
+      "latency_ms": 1.95263671875,
+      "from": "user_a",
+      "to": "secondary",
+      "label": "read right after burst",
+      "type": "read",
+      "pair_id": 9,
+      "collection": "vehicles",
+      "db_action": "find",
+      "document_id": "6a3107992f48a0642e524c88"
+    },
+    {
+      "t_ms": 174.255126953125,
+      "latency_ms": 1.95263671875,
+      "from": "secondary",
+      "to": "user_a",
+      "label": "capacity 400 — matches PRIMARY ✓",
+      "type": "fresh_response",
+      "pair_id": 9,
+      "collection": "vehicles",
+      "db_action": "find",
+      "document_id": "6a3107992f48a0642e524c88",
+      "version": 5,
+      "data": {
+        "vehicle_id": "CW-SHARED",
+        "plate": "34 CWSHRD",
+        "vehicle_type": "truck",
+        "max_payload_kg": 5000,
+        "manufacture_year": 2020,
+        "is_active": true,
+        "capacity": 400
+      }
+    },
+    {
+      "t_ms": 176.885009765625,
+      "latency_ms": 1.95263671875,
+      "from": "user_b",
+      "to": "secondary",
+      "label": "final read — convergence check",
+      "type": "read",
+      "pair_id": 10,
+      "collection": "vehicles",
+      "db_action": "find",
+      "document_id": "6a3107992f48a0642e524c88"
+    },
+    {
+      "t_ms": 186.72314453125,
+      "latency_ms": 1.95263671875,
+      "from": "secondary",
+      "to": "user_b",
+      "label": "⚡ divergence — capacity 400",
+      "type": "stale_response",
+      "pair_id": 10,
+      "collection": "vehicles",
+      "db_action": "find",
+      "document_id": "6a3107992f48a0642e524c88",
+      "version": 5,
+      "data": {
+        "vehicle_id": "CW-SHARED",
+        "plate": "34 CWSHRD",
+        "vehicle_type": "truck",
+        "max_payload_kg": 5000,
+        "manufacture_year": 2020,
+        "is_active": true,
+        "capacity": 400
+      }
+    }
+  ],
+  "log": {
+    "log_index": 1009,
+    "operation_id": "ae32c987",
+    "version_before": 4,
+    "version_after": 5,
+    "write_concern": "1",
+    "status": "pending_follower",
+    "replication_delay_ms": null,
+    "leader_write_time": "2026-06-16T08:21:45.890000",
+    "follower_visible_time": null,
+    "target_collection": "vehicles"
+  },
+  "summary": {
+    "writes_per_user": 2,
+    "total_writes": 3,
+    "capacity_increment": 100,
+    "initial_capacity": 5000,
+    "total_increment_added": 300,
+    "expected_final_capacity": 5300,
+    "primary_final_capacity": 400,
+    "secondary_final_capacity": 400,
+    "expected_final_version": 4,
+    "actual_final_version": 5,
+    "visible_immediately": 4,
+    "visible_pct": 133,
+    "secondary_lagged": false,
+    "avg_write_ms_user_a": 29.06,
+    "avg_write_ms_user_b": 79.66,
+    "replication_delay_ms": 1.75,
+    "order_preserved": false,
+    "order_violated": true,
+    "increments_preserved": false,
+    "final_value": {
+      "vehicle_id": "CW-SHARED",
+      "plate": "34 CWSHRD",
+      "vehicle_type": "truck",
+      "max_payload_kg": 5000,
+      "manufacture_year": 2020,
+      "is_active": true,
+      "capacity": 400
+    },
+    "consistency_model": "Concurrent Atomic Increments",
+    "consistency_achieved": false
+  }
+}
