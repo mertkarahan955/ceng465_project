@@ -188,16 +188,23 @@ def run_concurrent_writes():
         w["oplog_start_ms"]        = oplog_start_ms
         w["secondary_applied_ms"]  = secondary_applied_ms
         w["total_repl_ms"]         = total_repl_ms
+        w["reached_secondary"]     = applied_ms is not None
 
-    repl_ms = sum(repl_delays) / len(repl_delays) if repl_delays else fallback_repl_ms
+    real_delays = [d for d in repl_delays if d > 0]
+    repl_ms = sum(real_delays) / len(real_delays) if real_delays else fallback_repl_ms
 
     # ── Phase B: read SECONDARY right after the burst ─────────────────────────
-    snap_t_start = ms() - t0
-    snap_doc     = db.get_secondary()["vehicles"].find_one({"_id": item_id})
-    snap_t_end   = ms() - t0
+    # Read PRIMARY and SECONDARY at the same moment so "stale" means
+    # "secondary lags PRIMARY right now", not "secondary lags theoretical final".
+    snap_t_start         = ms() - t0
+    snap_doc             = db.get_secondary()["vehicles"].find_one({"_id": item_id})
+    primary_snap         = db.get_primary()["vehicles"].find_one({"_id": item_id})
+    snap_t_end           = ms() - t0
 
-    snap_version        = snap_doc.get("version") if snap_doc else 0
-    visible_immediately = max(0, min(total_writes, snap_version - 1))
+    snap_version         = snap_doc.get("version") if snap_doc else 0
+    primary_snap_version = primary_snap.get("version") if primary_snap else 0
+    snap_stale           = snap_version < primary_snap_version
+    visible_immediately  = max(0, snap_version - 1)
 
     # Final read on both nodes: did they converge on the same value?
     t_final_start   = ms() - t0
@@ -231,15 +238,31 @@ def run_concurrent_writes():
                 resp_meta={"collection": "vehicles", "db_action": "update",
                            "document_id": str(item_id), "version": f"v{v}", "data": w["value"]},
             )
-            out += replicate_ack_events(
-                w["oplog_start_ms"], w["secondary_applied_ms"], net_s,
-                f"oplog (async) — v{v}",
-                f"✓ v{v} applied — {w['total_repl_ms']:.0f}ms after write",
-                replicate_meta={"collection": "vehicles", "db_action": "replicate_update",
-                                "document_id": str(item_id), "version": f"v{v - 1} -> v{v}", "data": w["value"]},
-                ack_meta={"collection": "vehicles", "db_action": "applied_on_secondary",
-                          "document_id": str(item_id), "version": f"v{v}", "data": w["value"]},
-            )
+            if w["reached_secondary"]:
+                out += replicate_ack_events(
+                    w["oplog_start_ms"], w["secondary_applied_ms"], net_s,
+                    f"oplog (async) — v{v}",
+                    f"✓ v{v} applied — {w['total_repl_ms']:.0f}ms after write",
+                    replicate_meta={"collection": "vehicles", "db_action": "replicate_update",
+                                    "document_id": str(item_id), "version": f"v{v - 1} -> v{v}", "data": w["value"]},
+                    ack_meta={"collection": "vehicles", "db_action": "applied_on_secondary",
+                              "document_id": str(item_id), "version": f"v{v}", "data": w["value"]},
+                )
+            else:
+                # This version was overwritten on PRIMARY before reaching SECONDARY (lost update).
+                out.append({
+                    "t_ms":        w["oplog_start_ms"],
+                    "latency_ms":  safe_lat(net_s),
+                    "from":        "primary",
+                    "to":          "secondary",
+                    "label":       f"oplog (async) — v{v} ⚡ lost update",
+                    "type":        "lost_update",
+                    "collection":  "vehicles",
+                    "db_action":   "replicate_update",
+                    "document_id": str(item_id),
+                    "version":     f"v{v - 1} -> v{v}",
+                    "data":        w["value"],
+                })
         return out
 
     events += _write_events(results_a, "user_a", "A")
@@ -250,10 +273,12 @@ def run_concurrent_writes():
         snap_t_start, snap_t_end, net_s,
         "user_a", "secondary",
         "read right after burst", "read",
-        f"v{snap_version} — {visible_immediately}/{total_writes} updates visible" + (
-            " ⚡ async lag" if visible_immediately < total_writes else " ✓ all applied"
+        (
+            f"v{snap_version} — lags PRIMARY (v{primary_snap_version}) ⚡ async lag"
+            if snap_stale else
+            f"v{snap_version} — matches PRIMARY ✓"
         ),
-        "stale_response" if visible_immediately < total_writes else "fresh_response",
+        "stale_response" if snap_stale else "fresh_response",
         req_meta={"collection": "vehicles", "db_action": "find", "document_id": str(item_id)},
         resp_meta={"collection": "vehicles", "db_action": "find", "document_id": str(item_id),
                    "version": snap_version, "data": snap_doc.get("value") if snap_doc else None},
@@ -298,9 +323,12 @@ def run_concurrent_writes():
         "summary": {
             "writes_per_user":      WRITES_PER_USER,
             "total_writes":         total_writes,
-            "final_version":        final_version,
-            "visible_immediately":  visible_immediately,
-            "visible_pct":          round(visible_immediately / total_writes * 100) if total_writes else 0,
+            "expected_final_version": final_version,
+            "actual_final_version":   primary_snap_version,
+            "lost_updates":           final_version - primary_snap_version,
+            "visible_immediately":    visible_immediately,
+            "visible_pct":            round(visible_immediately / primary_snap_version * 100) if primary_snap_version else 0,
+            "secondary_lagged":       snap_stale,
             "avg_write_ms_user_a":  round(avg_a, 2),
             "avg_write_ms_user_b":  round(avg_b, 2),
             "replication_delay_ms": round(repl_ms, 2),
